@@ -198,9 +198,8 @@ canvas{display:block;width:100%;height:auto}
   <div class="panel">
     <div id="emiEmpty" class="note hide">Complete the unit values first. The payment summary is worked out on the unit's total value.</div>
     <div id="emiBody">
-      <div class="row two">
+      <div class="row">
         <div><label for="bk_pct">Booking amount, % of total</label><input id="bk_pct" inputmode="decimal" value="6"></div>
-        <div><label for="bk_date">Booking date (today)</label><input id="bk_date" type="date"></div>
       </div>
       <div id="payBody" style="margin-top:14px"></div>
       <button id="bkCopy" class="btn alt" style="width:100%;margin-top:12px">Copy summary to send</button>
@@ -1855,9 +1854,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#emiEmpty').classList.toggle('hide', !!m);
     $('#emiBody').classList.toggle('hide', !m);
     if (!m) return;
-    if (!$('#bk_date').value) $('#bk_date').value = bkToday();
     const pct = Math.min(100, Math.max(0, num($('#bk_pct').value) || 0));
-    const iso = $('#bk_date').value || bkToday();
+    const iso = bkToday();
     const p = bookingPlan(m, pct);
     const d0 = bkDate(iso, 0), d30 = bkDate(iso, 30);
     const unitKey = (PROJ.legacy ? 'neo' : PROJ.id) + '|' + (m.key || String(state.unit).trim());
@@ -1989,7 +1987,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     el.addEventListener('input', () => { state[k] = el.value; if (state.source) state.edited = true; render(); });
     if (NUMERIC.indexOf(k) >= 0) el.addEventListener('blur', () => { const n = num(el.value); if (isFinite(n)) { el.value = fmt(n); state[k] = el.value; } });
   });
-  ['#bk_pct', '#bk_date'].forEach(s => $(s).addEventListener('input', renderEmi));
+  $('#bk_pct').addEventListener('input', renderEmi);
 
   /* ---------- shared helpers ---------- */
   function saveBlob(f) {

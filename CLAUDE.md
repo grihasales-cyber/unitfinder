@@ -13,7 +13,7 @@ A personal installable web app for Vishnu R Nair (Sobha Senior Sales Manager, Ba
 Cost sheet, Floor plan, Annexure, Payments.
 
 ## Payments tab (latest feature)
-- Banner: "Book your home today with just X" = 6% of total value (editable %, editable date, default today).
+- Banner: "Book your home today with just X" = 6% of total value (editable %; the date is always today).
 - Today: only the booking is payable.
 - Next 30 days (by today + 30): rest of the pricelist's "within 30 days" payment after booking, plus annexure stages that are Completed or demanded, plus stages whose month-end is within 30 days.
 - Annexure stage dates are read from the annexure PDF text (pdf.js). A date like Sep-26 means the last day of that month.
