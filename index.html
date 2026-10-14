@@ -100,7 +100,7 @@ canvas{display:block;width:100%;height:auto}
     <div class="row two">
       <div>
         <label for="project">Project</label>
-        <select id="project"><option>Neopolis</option><option disabled>More projects arrive with the Drive connection</option></select>
+        <select id="project"><option value="neopolis">Neopolis</option></select>
       </div>
       <div>
         <label for="pricelist">Pricelist revision</label>
@@ -109,7 +109,7 @@ canvas{display:block;width:100%;height:auto}
     </div>
     <div style="margin-top:14px">
       <label for="unit">Unit number</label>
-      <input id="unit" class="unit-input" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="e.g. 4131" value="">
+      <input id="unit" class="unit-input" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="e.g. 4131" autocapitalize="characters" value="">
     </div>
     <div class="decoded" aria-live="polite">
       <div><small>Wing</small><b id="dWing">-</b></div>
@@ -147,7 +147,7 @@ canvas{display:block;width:100%;height:auto}
   <button role="tab" id="tabSheet" aria-selected="true" aria-controls="paneSheet">Cost sheet</button>
   <button role="tab" id="tabFp" aria-selected="false" aria-controls="paneFp">Floor plan</button>
   <button role="tab" id="tabAnn" aria-selected="false" aria-controls="paneAnn">Annexure</button>
-  <button role="tab" id="tabEmi" aria-selected="false" aria-controls="paneEmi">EMI</button>
+  <button role="tab" id="tabEmi" aria-selected="false" aria-controls="paneEmi">Payments</button>
 </div>
 
 <section id="paneSheet" role="tabpanel" aria-labelledby="tabSheet">
@@ -166,6 +166,10 @@ canvas{display:block;width:100%;height:auto}
       <button id="fpChoose" class="btn alt" style="width:100%"></button>
       <p id="fpSaved" class="note"></p>
     </div>
+    <div id="fpDrive" class="hide" style="margin-top:12px">
+      <label for="fpSrc">Presenter or floor plan file in Drive</label>
+      <select id="fpSrc"></select>
+    </div>
     <div style="margin-top:12px">
       <label for="fpPage">Use a different page (optional)</label>
       <input id="fpPage" inputmode="numeric" placeholder="Page number in the presenter PDF" autocomplete="off">
@@ -180,38 +184,27 @@ canvas{display:block;width:100%;height:auto}
   <div class="panel">
     <p id="annVerdict" class="verdict"></p>
     <ul id="annChecks" class="checks"></ul>
-    <h2 style="margin-top:12px">Tentative dates</h2>
-    <p class="note" style="margin-top:0">One date for each milestone, for wing <span id="annWing">-</span>. They are remembered on this phone for the wing when the browser allows it.</p>
-    <div id="annDates" class="dates"></div>
+    <div id="annPickBox" class="hide" style="margin-top:12px">
+      <label for="annPick">Annexure file in Drive</label>
+      <select id="annPick"></select>
+    </div>
+    <p id="annSrc" class="note" style="margin-top:8px"></p>
+    <div class="hide"><span id="annWing">-</span><div id="annDates"></div></div>
   </div>
   <div id="annPaper" class="paper"></div>
 </section>
 
 <section id="paneEmi" role="tabpanel" aria-labelledby="tabEmi" class="hide">
   <div class="panel">
-    <div id="emiEmpty" class="note hide">Complete the unit values first. The loan is calculated on the unit's total value.</div>
+    <div id="emiEmpty" class="note hide">Complete the unit values first. The payment summary is worked out on the unit's total value.</div>
     <div id="emiBody">
-      <div class="row three">
-        <div><label for="e_pct">Loan, % of total</label><input id="e_pct" inputmode="decimal" value="80"></div>
-        <div><label for="e_rate">Interest, % a year</label><input id="e_rate" inputmode="decimal" value="8.5"></div>
-        <div><label for="e_yrs">Tenure, years</label><input id="e_yrs" inputmode="decimal" value="20"></div>
+      <div class="row two">
+        <div><label for="bk_pct">Booking amount, % of total</label><input id="bk_pct" inputmode="decimal" value="6"></div>
+        <div><label for="bk_date">Booking date (today)</label><input id="bk_date" type="date"></div>
       </div>
-      <div class="emi-hero" style="margin-top:14px"><small>Monthly EMI</small><b id="emiVal">-</b></div>
-      <div class="stats">
-        <div><small>Total value (D)</small><b id="sD">-</b></div>
-        <div><small>Loan amount</small><b id="sLoan">-</b></div>
-        <div><small>Own contribution</small><b id="sOwn">-</b></div>
-        <div><small>Total interest</small><b id="sInt">-</b></div>
-      </div>
-      <h2>During construction</h2>
-      <p class="note" style="margin-top:0">Own contribution is paid first, then the bank funds the later milestones. Pre-EMI is interest only on the amount disbursed so far.</p>
-      <div style="overflow-x:auto;margin-top:8px">
-        <table>
-          <thead><tr><th>Milestone</th><th>Amount</th><th>From bank</th><th>Pre-EMI a month</th></tr></thead>
-          <tbody id="emiRows"></tbody>
-        </table>
-      </div>
-      <p class="note">Illustrative. Actual disbursement terms and rates are set by the bank. Stamp duty, registration and the final-payment deposit are not covered by this view.</p>
+      <div id="payBody" style="margin-top:14px"></div>
+      <button id="bkCopy" class="btn alt" style="width:100%;margin-top:12px">Copy summary to send</button>
+      <p class="note">Booking replaces the application amount. Stage dates come from this wing's payment annexure and are tentative; payment falls due on demand. A stage dated by month is taken as the last day of that month. Stamp duty and registration are not included.</p>
     </div>
   </div>
 </section>
@@ -735,8 +728,12 @@ const DEFAULT_NOTES = [
 /* Rows already extracted from the pricelist. Only A3 - 4131 is stored in this prototype. */
 const SAVED_UNITS = {};
 
+function inGroup(d) {
+  return d.replace(/\B(?=(\d\d)+\d(?!\d))/g, ',');
+}
 function fmt(n) {
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const r = Math.round(n), neg = r < 0;
+  return (neg ? '-' : '') + inGroup(String(Math.abs(r)));
 }
 function num(s) {
   const v = parseFloat(String(s == null ? '' : s).replace(/[, ]/g, ''));
@@ -744,8 +741,13 @@ function num(s) {
 }
 
 /* Sobha unit number: [Wing][Floor 2 digits][Door] */
+let DECODE_HOOK = null;
 function decodeUnit(u) {
   u = String(u || '').trim();
+  if (DECODE_HOOK) { const h = DECODE_HOOK(u); if (h) return h; }
+  return decodeDigits(u);
+}
+function decodeDigits(u) {
   if (!/^\d{4,5}$/.test(u)) return null;
   const door = parseInt(u.slice(-1), 10);
   const fl = u.slice(-3, -1);
@@ -815,7 +817,7 @@ function evaluate(st) {
 
     const printed = num(st.printed);
     const tie = [['V', V, num(st.printedV)], ['GST', gst, num(st.printedGst)], ['A', A, num(st.printedA)], ['D', D, printed]].filter(x => isFinite(x[2]) && x[2] > 0);
-    const badTie = tie.filter(x => x[1] !== x[2]);
+    const badTie = tie.filter(x => Math.abs(x[1] - x[2]) > 1);
     if (badTie.length) {
       checks.push({ s: 'fail', t: 'Calculation does not match the pricelist', d: badTie.map(x => x[0] + ': printed ' + fmt(x[2]) + ', calculated ' + fmt(x[1])).join('; ') + '.' });
     } else if (tie.length) {
@@ -825,10 +827,10 @@ function evaluate(st) {
     }
 
     const parkNote = PRICELIST.notes(model).find(n => /parking/i.test(n) && /\d\s*BHK/i.test(n));
-    const nb = parkNote && parkNote.match(/(\d)\s*BHK/i);
+    const nbAll = parkNote ? (parkNote.match(/(\d)\s*BHK/gi) || []).map(x => x.match(/\d/)[0]) : [];
     const tb = model.type.match(/^(\d)\s*BHK/i);
-    if (nb && (!tb || tb[1] !== nb[1])) {
-      checks.push({ s: 'warn', t: 'Parking note is written for ' + nb[1] + ' BHK', d: 'The pricelist note speaks of ' + nb[1] + ' BHK units. Confirm the wording for ' + model.type + '.' });
+    if (nbAll.length && (!tb || nbAll.indexOf(tb[1]) < 0)) {
+      checks.push({ s: 'warn', t: 'Parking note does not mention ' + (tb ? tb[1] + ' BHK' : model.type), d: 'The pricelist note speaks of ' + nbAll.join(' and ') + ' BHK units. Confirm the wording for ' + model.type + '.' });
     }
   }
 
@@ -838,6 +840,7 @@ function evaluate(st) {
 
 /* Rows of the official sheet. */
 function buildRows(m) {
+  if (m.generic) return m.rows;
   const R = [];
   const rs = (x) => x;
   R.push({ t: 'header', label: 'Unit Particulars' });
@@ -886,8 +889,10 @@ function layoutSheet(m, measure, rowH, noteLH) {
   let tw = letters.reduce((a, c) => a + measure(c, 'serif', 12), 0) + gap * (letters.length - 1);
   let cx = X0 + W / 2 - tw / 2;
   letters.forEach(c => { P.push({ k: 'text', x: cx, y: y + 22, s: c, font: 'serif', size: 12, align: 'left', color: '#000000' }); cx += measure(c, 'serif', 12) + gap; });
-  P.push({ k: 'text', x: X0 + W / 2, y: y + 46, s: PRICELIST.project, font: 'serif', size: 24, align: 'center', color: '#000000' });
-  P.push({ k: 'text', x: X0 + W / 2, y: y + 59, s: PRICELIST.subtitle, font: 'sans', size: 7.8, align: 'center', color: '#000000' });
+  const ptitle = m.generic ? m.title : PRICELIST.project;
+  let tsz = 24; while (tsz > 12 && measure(ptitle, 'serif', tsz) > W - 30) tsz -= 1;
+  P.push({ k: 'text', x: X0 + W / 2, y: y + 46, s: ptitle, font: 'serif', size: tsz, align: 'center', color: '#000000' });
+  P.push({ k: 'text', x: X0 + W / 2, y: y + 59, s: m.generic ? m.subtitle : PRICELIST.subtitle, font: 'sans', size: 7.8, align: 'center', color: '#000000' });
   y += mastH;
   const bodyTop = y;
   P.push({ k: 'line', x1: X0, y1: y, x2: X0 + W, y2: y, w: 0.5, color: RULE });
@@ -940,7 +945,7 @@ function layoutSheet(m, measure, rowH, noteLH) {
   /* notes, outside the box, hanging indent */
   let ny = bodyBottom + 14;
   const hang = measure('14. ', 'sans', NOTE_FS);
-  PRICELIST.notes(m).forEach((txt, i) => {
+  (m.generic ? m.notes : PRICELIST.notes(m)).forEach((txt, i) => {
     const lines = wrap(txt, 'sans', NOTE_FS, W - hang);
     P.push({ k: 'text', x: X0, y: ny, s: (i + 1) + '.', font: 'sans', size: NOTE_FS, align: 'left', color: '#000000' });
     lines.forEach(ln => { P.push({ k: 'text', x: X0 + hang, y: ny, s: ln, font: 'sans', size: NOTE_FS, align: 'left', color: '#000000' }); ny += noteLH; });
@@ -987,7 +992,8 @@ function normText(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').tr
 function fixRupee(t) { return String(t).replace(/`/g, '₹'); }
 function fmt2(n) {
   const p = Number(n).toFixed(2).split('.');
-  return p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + p[1];
+  const neg = p[0][0] === '-', d = neg ? p[0].slice(1) : p[0];
+  return (neg ? '-' : '') + inGroup(d) + '.' + p[1];
 }
 function parseWingList(s) {
   const out = [];
@@ -1070,9 +1076,23 @@ function parsePricelist(XLSX, bytes) {
   if (!Object.keys(units).length) throw new Error('Pricelist format not recognised: no unit rows found.');
   const schedules = [];
   wb.SheetNames.forEach(nm => {
-    const sm = nm.match(/^Payment Schedule\s*-\s*(.+)$/i);
+    const sm = nm.match(/^Payment Schedule\s*(?:-\s*(.+))?$/i);
     if (!sm) return;
-    const ps = parseScheduleSheet(rowsOf(nm));
+    const srows = rowsOf(nm);
+    let wtxt = sm[1] || '';
+    if (!wtxt) {
+      for (let i = 0; i < Math.min(srows.length, 12) && !wtxt; i++) {
+        const t = srows[i].map(c => normText(c)).join(' ');
+        const m = t.match(/Wings?\s+([\d\s,&\-]+?)\s*-\s*Pricing/i);
+        if (m) wtxt = m[1];
+      }
+    }
+    if (!wtxt) {
+      const ws = {}; Object.keys(units).forEach(k => { ws[units[k].wing] = 1; });
+      wtxt = Object.keys(ws).join(', ');
+    }
+    sm[1] = wtxt;
+    const ps = parseScheduleSheet(srows);
     const total = ps.items.reduce((a, x) => a + x.pct, 0);
     if (!ps.items.length || Math.abs(total - 1) > 0.0005) throw new Error('Pricelist format not recognised: payment schedule in "' + nm + '" adds to ' + Math.round(total * 10000) / 100 + '%.');
     schedules.push({ name: nm, wingText: sm[1].replace(/^Wings?\s*/i, '').trim(), wings: parseWingList(sm[1]), items: ps.items, notes: ps.notes });
@@ -1083,6 +1103,398 @@ function parsePricelist(XLSX, bytes) {
 
 function pickSchedule(parsed, wing) {
   return parsed.schedules.find(s => s.wings.indexOf(wing) >= 0) || (parsed.schedules.length === 1 ? parsed.schedules[0] : null);
+}
+
+/* ---------- Generic pricelist engine ----------
+   Every Sobha pricelist workbook carries an official "Unit Pricelist" sheet whose cells are formulas
+   (VLOOKUP into the Master Pricelist, SUM, percentages of the payment schedule). Instead of re-implementing
+   each project's layout, this reads that sheet, sets the unit cell, and evaluates it. */
+function xlTokens(s) {
+  const t = []; let i = 0, m;
+  while (i < s.length) {
+    const ch = s[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    if (ch === '"') {
+      let j = i + 1, v = '';
+      while (j < s.length) { if (s[j] === '"') { if (s[j + 1] === '"') { v += '"'; j += 2; continue; } break; } v += s[j++]; }
+      t.push({ k: 's', v }); i = j + 1; continue;
+    }
+    const rest = s.slice(i, i + 80);
+    const mkRef = (sheet, mm, off) => {
+      const c2n = c => c.split('').reduce((a, x) => a * 26 + x.charCodeAt(0) - 64, 0) - 1;
+      const a = [c2n(mm[1]), +mm[2] - 1];
+      const b = mm[3] ? [c2n(mm[3]), +mm[4] - 1] : null;
+      return { k: 'ref', sheet, a, b };
+    };
+    if ((m = rest.match(/^(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_.]*))!/))) {
+      const sheet = m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2];
+      const r = s.slice(i + m[0].length, i + m[0].length + 40).match(/^\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?/);
+      if (!r) throw new Error('Unreadable reference in formula: ' + s);
+      t.push(mkRef(sheet, r)); i += m[0].length + r[0].length; continue;
+    }
+    if ((m = rest.match(/^([A-Za-z_][A-Za-z0-9_.]*)\(/))) { t.push({ k: 'fn', v: m[1].toUpperCase() }); i += m[0].length; continue; }
+    if ((m = rest.match(/^\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?(?![A-Za-z0-9_])/))) { t.push(mkRef(null, m)); i += m[0].length; continue; }
+    if ((m = rest.match(/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/))) { t.push({ k: 'n', v: parseFloat(m[0]) }); i += m[0].length; continue; }
+    if ((m = rest.match(/^(TRUE|FALSE)\b/i))) { t.push({ k: 'b', v: /true/i.test(m[0]) }); i += m[0].length; continue; }
+    if ((m = rest.match(/^(<=|>=|<>|[-+*\/^&=<>(),%])/))) { t.push({ k: 'op', v: m[0] }); i += m[0].length; continue; }
+    throw new Error('Unsupported character in formula: ' + s);
+  }
+  return t;
+}
+function xlParse(src) {
+  const t = xlTokens(src); let p = 0;
+  const peek = () => t[p], next = () => t[p++];
+  const isOp = v => t[p] && t[p].k === 'op' && t[p].v === v;
+  const PREC = { '=': 1, '<>': 1, '<': 1, '>': 1, '<=': 1, '>=': 1, '&': 2, '+': 3, '-': 3, '*': 4, '/': 4, '^': 5 };
+  function primary() {
+    const x = next();
+    if (!x) throw new Error('Formula ended early: ' + src);
+    let node;
+    if (x.k === 'n') node = { t: 'n', v: x.v };
+    else if (x.k === 's') node = { t: 's', v: x.v };
+    else if (x.k === 'b') node = { t: 'b', v: x.v };
+    else if (x.k === 'ref') node = { t: 'ref', sheet: x.sheet, a: x.a, b: x.b };
+    else if (x.k === 'fn') {
+      const args = [];
+      if (!isOp(')')) { for (;;) { args.push(expr(0)); if (isOp(',')) { next(); continue; } break; } }
+      if (!isOp(')')) throw new Error('Missing ) in formula: ' + src);
+      next(); node = { t: 'fn', name: x.v, args };
+    } else if (x.k === 'op' && x.v === '(') { node = expr(0); if (!isOp(')')) throw new Error('Missing ) in formula: ' + src); next(); }
+    else if (x.k === 'op' && (x.v === '-' || x.v === '+')) { const o = primaryWithPct(); node = x.v === '-' ? { t: 'neg', a: o } : o; return node; }
+    else throw new Error('Unexpected ' + (x.v || x.k) + ' in formula: ' + src);
+    return node;
+  }
+  function primaryWithPct() {
+    let n = primary();
+    while (isOp('%')) { next(); n = { t: 'pct', a: n }; }
+    return n;
+  }
+  function expr(minPrec) {
+    let left = primaryWithPct();
+    for (;;) {
+      const o = peek();
+      if (!o || o.k !== 'op' || !PREC[o.v]) break;
+      const pr = PREC[o.v];
+      if (pr < minPrec) break;
+      next();
+      const right = expr(pr + 1);
+      left = { t: 'bin', op: o.v, a: left, b: right };
+    }
+    return left;
+  }
+  const ast = expr(0);
+  if (p < t.length) throw new Error('Unexpected text at the end of formula: ' + src);
+  return ast;
+}
+function xlNum(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  if (!isFinite(n) || !/^\s*-?[\d.,]+\s*$/.test(String(v))) throw new Error('Text where a number was expected: ' + v);
+  return n;
+}
+function xlStr(v) {
+  if (v == null) return '';
+  if (typeof v === 'number') return String(Math.round(v * 1e12) / 1e12);
+  return String(v);
+}
+function xlRound(x, d, dir) {
+  const f = Math.pow(10, d);
+  const y = x * f;
+  const r = dir === 'up' ? Math.sign(y) * Math.ceil(Math.abs(y) - 1e-9) : dir === 'down' ? Math.sign(y) * Math.floor(Math.abs(y) + 1e-9) : Math.sign(y) * Math.round(Math.abs(y) + 1e-9);
+  return r / f;
+}
+function xlText(v, f) {
+  const n = xlNum(v);
+  const dm = String(f).match(/\.(0+)/);
+  const dec = dm ? dm[1].length : 0;
+  let pct = /%/.test(f);
+  let x = pct ? n * 100 : n;
+  let s = Math.abs(x).toFixed(dec);
+  if (/,/.test(f)) { const q = s.split('.'); q[0] = q[0].replace(/\B(?=(\d{3})+(?!\d))/g, ','); s = q.join('.'); }
+  return (x < 0 ? '-' : '') + s + (pct ? '%' : '');
+}
+
+function makeBook(XLSX, wb) {
+  const cache = new Map(), over = new Map(), asts = new Map(), idx = new Map();
+  const isMaster = n => /master/i.test(n);
+  const key = (sh, c, r) => sh + '\u0001' + c + ',' + r;
+  const book = {
+    wb,
+    raw(sh, c, r) {
+      const ws = wb.Sheets[sh];
+      if (!ws) throw new Error('The workbook has no sheet "' + sh + '".');
+      return ws[XLSX.utils.encode_cell({ c, r })];
+    },
+    set(sh, c, r, v) { over.set(key(sh, c, r), v); cache.clear(); },
+    value(sh, c, r) {
+      const k = key(sh, c, r);
+      if (over.has(k)) return over.get(k);
+      if (cache.has(k)) return cache.get(k);
+      const cell = this.raw(sh, c, r);
+      let v = null;
+      if (cell) {
+        if (cell.f && !isMaster(sh)) {
+          let ast = asts.get(cell.f);
+          if (!ast) { ast = xlParse(cell.f.replace(/^\s*=/, '')); asts.set(cell.f, ast); }
+          v = this.ev(ast, sh);
+          if (v && v.rng) v = this.value(v.sheet, v.c0, v.r0);
+        } else if (cell.t === 'e') v = null;
+        else v = cell.v;
+        if (v === undefined) v = null;
+      }
+      cache.set(k, v);
+      return v;
+    },
+    cells(rg) {
+      const o = [];
+      for (let r = rg.r0; r <= rg.r1; r++) for (let c = rg.c0; c <= rg.c1; c++) o.push(this.value(rg.sheet, c, r));
+      return o;
+    },
+    ev(n, sh) {
+      switch (n.t) {
+        case 'n': case 's': case 'b': return n.v;
+        case 'ref': {
+          const s = n.sheet || sh;
+          if (n.b) return { rng: true, sheet: s, c0: Math.min(n.a[0], n.b[0]), r0: Math.min(n.a[1], n.b[1]), c1: Math.max(n.a[0], n.b[0]), r1: Math.max(n.a[1], n.b[1]) };
+          return this.value(s, n.a[0], n.a[1]);
+        }
+        case 'neg': return -xlNum(this.sc(this.ev(n.a, sh)));
+        case 'pct': return xlNum(this.sc(this.ev(n.a, sh))) / 100;
+        case 'bin': {
+          const a = this.sc(this.ev(n.a, sh)), b = this.sc(this.ev(n.b, sh));
+          switch (n.op) {
+            case '+': return xlNum(a) + xlNum(b);
+            case '-': return xlNum(a) - xlNum(b);
+            case '*': return xlNum(a) * xlNum(b);
+            case '/': { const d = xlNum(b); if (d === 0) throw new Error('Division by zero in the pricelist'); return xlNum(a) / d; }
+            case '^': return Math.pow(xlNum(a), xlNum(b));
+            case '&': return xlStr(a) + xlStr(b);
+            default: {
+              const x = typeof a === 'string' || typeof b === 'string' ? [xlStr(a).toUpperCase(), xlStr(b).toUpperCase()] : [xlNum(a), xlNum(b)];
+              return n.op === '=' ? x[0] === x[1] : n.op === '<>' ? x[0] !== x[1] : n.op === '<' ? x[0] < x[1] : n.op === '>' ? x[0] > x[1] : n.op === '<=' ? x[0] <= x[1] : x[0] >= x[1];
+            }
+          }
+        }
+        case 'fn': return this.fn(n, sh);
+      }
+      throw new Error('Unknown formula element');
+    },
+    sc(v) { return v && v.rng ? this.value(v.sheet, v.c0, v.r0) : v; },
+    flat(args, sh) {
+      const o = [];
+      args.forEach(a => {
+        const v = this.ev(a, sh);
+        if (v && v.rng) this.cells(v).forEach(x => { if (typeof x === 'number') o.push(x); });
+        else o.push(xlNum(v));
+      });
+      return o;
+    },
+    fn(n, sh) {
+      const A = n.args, e = i => this.sc(this.ev(A[i], sh));
+      switch (n.name) {
+        case 'SUM': return this.flat(A, sh).reduce((a, b) => a + b, 0);
+        case 'MIN': { const f = this.flat(A, sh); return f.length ? Math.min.apply(null, f) : 0; }
+        case 'MAX': { const f = this.flat(A, sh); return f.length ? Math.max.apply(null, f) : 0; }
+        case 'ABS': return Math.abs(xlNum(e(0)));
+        case 'INT': return Math.floor(xlNum(e(0)));
+        case 'ROUND': return xlRound(xlNum(e(0)), A[1] ? xlNum(e(1)) : 0, '');
+        case 'ROUNDUP': return xlRound(xlNum(e(0)), A[1] ? xlNum(e(1)) : 0, 'up');
+        case 'ROUNDDOWN': return xlRound(xlNum(e(0)), A[1] ? xlNum(e(1)) : 0, 'down');
+        case 'TEXT': return xlText(e(0), xlStr(e(1)));
+        case 'CONCATENATE': case 'CONCAT': return A.map((_, i) => xlStr(e(i))).join('');
+        case 'IF': { const c = e(0); const truthy = typeof c === 'string' ? c.toUpperCase() === 'TRUE' : !!xlNum(c); return truthy ? (A[1] ? e(1) : true) : (A[2] ? e(2) : false); }
+        case 'IFERROR': try { return e(0); } catch (x) { return e(1); }
+        case 'AND': return A.every((_, i) => !!xlNum(e(i)));
+        case 'OR': return A.some((_, i) => !!xlNum(e(i)));
+        case 'VLOOKUP': {
+          const look = xlStr(e(0)).trim().toUpperCase();
+          const rg = this.ev(A[1], sh);
+          if (!rg || !rg.rng) throw new Error('VLOOKUP needs a range');
+          const col = xlNum(e(2));
+          const ik = rg.sheet + '|' + rg.c0 + '|' + rg.r0 + '|' + rg.r1;
+          let map = idx.get(ik);
+          if (!map) {
+            map = new Map();
+            const ws = wb.Sheets[rg.sheet];
+            const last = Math.min(rg.r1, XLSX.utils.decode_range(ws['!ref']).e.r);
+            for (let r = rg.r0; r <= last; r++) {
+              const v = this.value(rg.sheet, rg.c0, r);
+              if (v == null || v === '') continue;
+              const kk = xlStr(v).trim().toUpperCase();
+              if (!map.has(kk)) map.set(kk, r);
+            }
+            idx.set(ik, map);
+          }
+          const row = map.get(look);
+          if (row == null) throw new Error('Unit "' + look + '" is not in the Master Pricelist');
+          return this.value(rg.sheet, rg.c0 + col - 1, row);
+        }
+      }
+      throw new Error('The pricelist uses ' + n.name + ', which this app cannot calculate yet.');
+    }
+  };
+  return book;
+}
+
+/* Master Pricelist: one row per unit. */
+function genReadMaster(XLSX, wb) {
+  const mname = wb.SheetNames.find(n => /master/i.test(n));
+  if (!mname) throw new Error('Pricelist format not recognised: no Master Pricelist sheet.');
+  const ws = wb.Sheets[mname];
+  const rg = XLSX.utils.decode_range(ws['!ref']);
+  const cellText = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? normText(x.v) : ''; };
+  let hr = -1;
+  for (let r = 0; r <= Math.min(rg.e.r, 40) && hr < 0; r++) {
+    let hasU = false, hasS = false;
+    for (let c = 0; c <= rg.e.c; c++) { const t = cellText(r, c); if (/^(unit number|plot no\.?)$/i.test(t)) hasU = true; if (/sba|plot area/i.test(t)) hasS = true; }
+    if (hasU && hasS) hr = r;
+  }
+  if (hr < 0) throw new Error('Pricelist format not recognised: Master Pricelist header row not found.');
+  const H = []; for (let c = 0; c <= rg.e.c; c++) H.push(cellText(hr, c));
+  const find = re => H.findIndex(h => re.test(h));
+  const col = { unit: find(/^(unit number|plot no\.?)$/i), type: find(/type of unit/i), wing: find(/^wing$/i), floor: find(/^floor$/i), cls: find(/classification/i),
+    carpet: find(/carpet/i), sba: find(/sba|plot area/i), A: find(/A\s*=\s*V\s*\+\s*GST/i), D: find(/D\s*=\s*A\s*\+\s*B|\bTV\s*=/i) };
+  if (col.D < 0) col.D = find(/^total (sale )?value excluding/i);
+  if (col.unit < 0 || col.sba < 0) throw new Error('Pricelist format not recognised: Master Pricelist columns not found.');
+  const get = (r, c) => { if (c < 0) return ''; const x = ws[XLSX.utils.encode_cell({ r, c })]; return x && x.v != null ? x.v : ''; };
+  const units = {}, keys = [];
+  for (let r = hr + 1; r <= rg.e.r; r++) {
+    const k = String(get(r, col.unit)).trim();
+    if (!k || !/\d/.test(k)) continue;
+    if (units[k]) continue;
+    if (!(Number(get(r, col.sba)) > 50) || (col.carpet >= 0 && !(Number(get(r, col.carpet)) > 50))) continue;
+    const pm = k.match(/^([A-Za-z]+\d*)\s*-\s*\d+$/);
+    units[k] = { key: k, plan: pm ? pm[1].toUpperCase() : '', type: normText(get(r, col.type)), wing: String(normText(get(r, col.wing))), floor: String(normText(get(r, col.floor))),
+      cls: normText(get(r, col.cls)), carpet: col.carpet >= 0 ? Number(get(r, col.carpet)) : NaN, sba: Number(get(r, col.sba)), A: Number(get(r, col.A)), D: Number(get(r, col.D)) };
+    keys.push(k);
+  }
+  if (!keys.length) throw new Error('Pricelist format not recognised: no unit rows found.');
+  return { sheet: mname, units, keys };
+}
+const genNorm = s => String(s == null ? '' : s).replace(/[\s\-_.]+/g, '').toUpperCase();
+const genTail = s => { const m = String(s).match(/(\d+)\s*$/); return m ? m[1] : ''; };
+
+/* Which Master key does the typed unit mean? Returns { keys: [...] }. */
+function genResolve(master, typed) {
+  const t = String(typed || '').trim();
+  if (!t) return [];
+  if (master.units[t]) return [t];
+  const n = genNorm(t);
+  let hit = master.keys.filter(k => genNorm(k) === n);
+  if (hit.length) return hit;
+  if (/^\d+$/.test(t)) {
+    hit = master.keys.filter(k => genTail(k) === t);
+    if (!hit.length) { const z = t.replace(/^0+/, ''); hit = master.keys.filter(k => genTail(k).replace(/^0+/, '') === z); }
+  }
+  return hit;
+}
+
+/* The "Unit Pricelist" template sheets, with the unit numbers each one lists in column D. */
+function genTemplates(XLSX, wb) {
+  return wb.SheetNames.filter(n => /(unit|plot).*pricelist/i.test(n) && !/master/i.test(n)).map(name => {
+    const ws = wb.Sheets[name];
+    const rg = XLSX.utils.decode_range(ws['!ref']);
+    const list = new Set();
+    for (let r = 0; r <= rg.e.r; r++) {
+      const x = ws[XLSX.utils.encode_cell({ r, c: 3 })];
+      if (x && x.v != null && String(x.v).trim()) list.add(genNorm(x.v));
+    }
+    const wm = name.match(/Wings?\s+([\d\s,&\-]+)/i);
+    return { name, list, wings: wm ? parseWingList(wm[1]) : null };
+  });
+}
+function genPickTemplate(tpls, key, row) {
+  if (!tpls.length) throw new Error('Pricelist format not recognised: no "Unit Pricelist" sheet.');
+  const nk = genNorm(key);
+  let hit = tpls.filter(t => t.list.has(nk));
+  if (hit.length === 1) return hit[0];
+  if (hit.length > 1) { const w = hit.filter(t => t.wings && row && t.wings.indexOf(+row.wing) >= 0); return (w[0] || hit[0]); }
+  const w = tpls.filter(t => t.wings && row && t.wings.indexOf(+row.wing) >= 0);
+  if (w.length) return w[0];
+  if (tpls.length === 1) return tpls[0];
+  const plain = tpls.filter(t => !t.wings);
+  return plain.length === 1 ? plain[0] : null;
+}
+
+function genFormat(v, z, label) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    let dec = 0;
+    const m = z && String(z).match(/0\.(0+)/);
+    if (m) dec = m[1].length; else if (!z && /area/i.test(label || '')) dec = 2;
+    const s = Math.abs(v).toFixed(dec).split('.');
+    s[0] = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const out = s.join('.');
+    return (v < 0 && +out !== 0 ? '-' : '') + out;
+  }
+  return fixRupee(normText(v));
+}
+function genShort(label) {
+  let l = fixRupee(label).replace(/\s*in ₹\s*$/, '').replace(/,\s*$/, '');
+  const w = l.match(/within\s+(\d+)\s+days/i);
+  if (w) return 'Within ' + w[1] + ' days';
+  if (/application/i.test(l)) return 'Application';
+  if (/booking/i.test(l)) return 'Booking';
+  if (/final payment/i.test(l)) return 'Final payment';
+  const c = l.match(/^(?:Payable )?on completion of (.*?)(?:\s+or\s+\d.*|\s+in all\b.*|\s+in the\b.*|\s+excl\b.*)?$/i);
+  if (c) l = c[1];
+  return l.length > 30 ? l.slice(0, 28) + '...' : l;
+}
+
+/* Evaluates one unit on its template. Returns rows ready for the layout, plus the figures used for checks. */
+function genCompute(XLSX, book, tplName, key) {
+  const ws = book.wb.Sheets[tplName];
+  const rg = XLSX.utils.decode_range(ws['!ref']);
+  const lastRow = Math.min(rg.e.r, 140);
+  let keyRow = -1;
+  for (let r = 0; r <= Math.min(lastRow, 40) && keyRow < 0; r++) if (/^(unit|plot) number$/i.test(normText(book.value(tplName, 0, r)))) keyRow = r;
+  if (keyRow < 0) throw new Error('Pricelist format not recognised: no Unit Number cell on "' + tplName + '".');
+  book.set(tplName, 1, keyRow, key);
+  const titleCell = String(book.value(tplName, 0, 0) || '').split(/\r?\n/).map(x => normText(x)).filter(Boolean);
+  const subtitle = fixRupee(titleCell.length ? titleCell[titleCell.length - 1] : 'Pricing & Payment Schedule');
+  const rows = [], notes = [];
+  let inPay = false, indent = false, D = NaN, A = NaN, total = NaN, ms = [];
+  const SECTION = /^(Unit Particulars|Plot Details|Basic (?:Sale )?Value|Other Charges|Deposits|Payment Schedule)$/i;
+  for (let r = 1; r <= lastRow; r++) {
+    const a = book.value(tplName, 0, r), b = book.value(tplName, 1, r);
+    const label = fixRupee(normText(a));
+    const bEmpty = b == null || b === '';
+    if (!label && bEmpty) { if (!notes.length) rows.push({ t: 'blank' }); continue; }
+    if (/^\d{1,2}\.\s/.test(label)) { notes.push(label.replace(/^\d{1,2}\.\s*/, '')); continue; }
+    if (notes.length) continue;
+    if (!label) continue;
+    if (bEmpty) {
+      if (SECTION.test(label)) { rows.push({ t: 'header', label }); inPay = /^payment schedule$/i.test(label); indent = false; }
+      else { rows.push({ label, value: '', bold: true }); indent = true; }
+      continue;
+    }
+    const cell = book.raw(tplName, 1, r);
+    const value = genFormat(b, cell && cell.z, label);
+    const row = { label, value };
+    if (/^Total Value excluding Registration|^Total Sale Value/i.test(label) || /\(A\s*=/.test(label)) { row.bold = true; row.shade = true; indent = false; }
+    else if (/^Total /i.test(label)) { row.bold = true; indent = false; }
+    else if (indent) row.indent = 14;
+    if (typeof b === 'number') {
+      if (/\(D\s*=\s*A\s*\+\s*B\)/.test(label)) D = b;
+      if (/\(A\s*=/.test(label)) A = b;
+      if (inPay) {
+        if (/^Total /i.test(label)) total = b;
+        else ms.push({ label, short: genShort(label), amount: Math.round(b), exact: b });
+      }
+    }
+    rows.push(row);
+  }
+  if (!isFinite(D)) D = total;
+  while (rows.length && rows[rows.length - 1].t === 'blank') rows.pop();
+  const out = [];
+  rows.forEach((x, i) => {
+    if (x.t !== 'blank') { out.push(x); return; }
+    const nx = rows.slice(i + 1).find(y => y.t !== 'blank');
+    if (nx && nx.t === 'header' && out.length) out.push({ t: 'spacer' });
+  });
+  return { sheet: tplName, rows: out, notes, subtitle, D, A, total, ms };
 }
 
 function applySchedule(sc) {
@@ -1151,7 +1563,7 @@ function floorChecks(info) {
     checks.push({ s: 'fail', t: 'Plan ' + (info.plan || '?') + ' is not mapped for wing ' + info.wing, d: 'Type the page number below.' });
     return checks;
   }
-  checks.push({ s: 'ok', t: 'Page ' + (info.idx + 1) + ' selected', d: info.source === 'manual' ? 'Page number typed by you' : 'Plan ' + String(info.plan).toUpperCase() + ' in the wing ' + info.wing + ' presenter' });
+  checks.push({ s: 'ok', t: 'Page ' + (info.idx + 1) + ' selected', d: info.source === 'manual' ? 'Page number typed by you' : info.source === 'search' ? 'Found by matching this unit\'s areas inside the PDF' : 'Plan ' + String(info.plan).toUpperCase() + ' in the wing ' + info.wing + ' presenter' });
   if (info.text == null) return checks;
   const norm = info.text.replace(/[,\s]/g, '');
   const nums = norm.match(/\d{3,4}\.\d{2}/g) || [];
@@ -1269,6 +1681,33 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   const NUMERIC = ['bv', 'ac', 'dep', 'printed'];
   const state = { unit: '', plan: '', type: '', cls: '', carpet: '', sba: '', bv: '', ac: '', dep: '', printed: '', printedV: '', printedGst: '', printedA: '', rowWing: '', rowFloor: '', source: '', edited: false };
   let pl = null; /* the pricelist revision chosen from Drive, parsed */
+  const PROJECTS = [
+    { id: 'neopolis', name: 'Neopolis', title: 'NEOPOLIS', legacy: true, root: '18frM9pjqJZJ9Y7G3IaaVMnlfHS_IWhdZ', example: '4131' },
+    { id: 'oneworld', name: 'One World', title: 'ONE WORLD', root: '1GeY7LEQpEuky-nuVoEh29AoL1m0E550h', example: '3246' },
+    { id: 'magnus', name: 'Magnus', title: 'MAGNUS', root: '16sjHJZDKHQRAfaw8GdV9NN8JtnIzztKe', example: '1001' },
+    { id: 'altair', name: 'Altair', title: 'ALTAIR', root: '1raOogyF78HsCoCHh1T2ocl0X7Hev5isd', example: '2174' },
+    { id: 'ayana', name: 'Ayana', title: 'AYANA', root: '1qxmAz-sk6V6cKo-MfRh-6cv8o2amUbcj', example: '69001' },
+    { id: 'townpark', name: 'Townpark', title: 'TOWNPARK', root: '1qypdeWMsb787yGWzGzFZSXJ4yAOcb4tb', example: '2132' },
+    { id: 'infinia', name: 'Infinia', title: 'INFINIA', root: '1p5-N8lIVTmfvtMf9NckFTzp5sXo5tj3e', example: '1041' },
+    { id: 'insignia', name: 'Insignia', title: 'INSIGNIA', root: '198MbmQaOZ-f7zCU1dvD0AecXRjIAk7yJ', example: '' },
+    { id: 'galera', name: 'Galera', title: 'GALERA', root: '12yxieRtGRVjKF91CyDW-K43rohEVSoey', example: 'B1 - 09' },
+    { id: 'valleyview', name: 'Valley View', title: 'VALLEY VIEW', root: '1YeNML6njaJkha1-W3ijjeS4MtDFsziHN', example: '' },
+    { id: 'sacredgrove', name: 'Sacred Grove', title: 'SACRED GROVE', root: '1HHD0Kzth8aSEGwhZRthLPaAuxyGsTAFf', example: '' },
+    { id: 'boulevard', name: 'Boulevard', title: 'BOULEVARD', root: '15YGrB-hScN5BXgSEMkrEpQfSQHh53kCW', example: '12' },
+    { id: 'birdsong', name: 'Birdsong', title: 'BIRDSONG', root: '1_k27MGWp9EcBJAcLJJnaC44gRqJJOb8E', example: '' },
+    { id: 'crystalmeadows', name: 'Crystal Meadows', title: 'CRYSTAL MEADOWS', root: '15OMiNogda8hLCI6WdGjJJJaf_rPueD_i', example: '' }
+  ];
+  let PROJ = PROJECTS.find(x => x.id === (function () { try { return localStorage.getItem('project'); } catch (e) { return null; } })()) || PROJECTS[0];
+  DECODE_HOOK = function (u) {
+    if (PROJ.legacy || !pl || !pl.gen || !u) return null;
+    const ks = genResolve(pl.gen.master, u);
+    if (ks.length !== 1) return null;
+    const r = pl.gen.master.units[ks[0]];
+    const dd = decodeDigits(u);
+    const wing = r.wing !== '' && isFinite(+r.wing) ? +r.wing : (dd ? dd.wing : null);
+    if (wing == null) return null;
+    return { wing, floor: r.floor !== '' ? r.floor : (dd ? dd.floor : '-'), door: dd ? dd.door : genTail(r.key).slice(-1) };
+  };
 
   function showBanner(msg) { const b = $('#banner'); b.textContent = msg || ''; b.classList.toggle('hide', !msg); }
 
@@ -1276,6 +1715,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     Object.keys(ids).forEach(k => { state[k] = ''; $('#' + ids[k]).value = ''; });
     ['printedV', 'printedGst', 'printedA', 'rowWing', 'rowFloor', 'source'].forEach(k => { state[k] = ''; });
     state.edited = false;
+    if (!PROJ.legacy) { showBanner(u && !pl ? 'Connect Drive and choose a pricelist revision to load this unit.' : ''); return; }
     const d = decodeUnit(u);
     if (!d) { showBanner(''); return; }
     if (!pl) { showBanner('Connect Drive and choose a pricelist revision to load this unit.'); return; }
@@ -1325,7 +1765,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#dFloor').textContent = d ? d.floor : '-';
     $('#dDoor').textContent = d ? d.door : '-';
 
-    const ev = evaluate(state);
+    const ev = PROJ.legacy ? evaluate(state) : evaluateGeneric();
     if (pl && d) {
       const nw = newerRevisions(drive.files, pl.title, d.wing);
       if (nw.length) ev.checks.push({ s: 'warn', t: 'Newer revision in Drive: ' + nw.map(f => 'R' + revNumber(f.name)).join(', '), d: 'You chose ' + pl.title.replace(/\s+to S&M.*$/i, '') + '. Make sure the newer one does not apply to wing ' + d.wing + ' before quoting.' });
@@ -1356,30 +1796,189 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (activeTab === 'ann') renderAnn();
   }
 
+  function bkToday() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function bkDate(iso, plus) { const p = String(iso).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2] + (plus || 0)); }
+  function bkFmt(d) { return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear(); }
+  const MONS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const MONRE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*[-'’\/,]?\s*(\d{4}|\d{2})\b/i;
+  let bkText = '';
+  const pay = { key: '', lsKey: '', state: 'idle', stages: null, file: null, ticks: {}, token: 0 };
+
+  /* Read the stage names and tentative dates out of the annexure PDF text. */
+  async function payStages(bytes) {
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+    const lines = [];
+    for (let pg = 1; pg <= Math.min(doc.numPages, 3); pg++) {
+      const tc = await (await doc.getPage(pg)).getTextContent();
+      const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({ s: i.str.trim(), x: i.transform[4], y: i.transform[5] }));
+      const rows = [];
+      items.forEach(i => { const r = rows.find(q => Math.abs(q.y - i.y) < 3); if (r) r.it.push(i); else rows.push({ y: i.y, it: [i] }); });
+      rows.sort((q, w) => w.y - q.y);
+      rows.forEach(r => { r.it.sort((q, w) => q.x - w.x); lines.push(r.it.map(i => i.s).join(' ').replace(/\s+/g, ' ')); });
+    }
+    const out = []; let prev = '';
+    lines.forEach(line => {
+      if (/^note/i.test(line)) { prev = ''; return; }
+      const mm = line.match(MONRE);
+      if (mm) {
+        let name = line.replace(MONRE, '').replace(/^[\d.\s)\-–:|]+/, '').replace(/[\s\-–:|]+$/, '').trim();
+        if (!name) name = prev;
+        if (name) out.push({ name, y: 2000 + (+mm[2] % 100 === +mm[2] ? +mm[2] : +mm[2] - 2000), m: MONS.indexOf(mm[1].toLowerCase()) });
+        prev = '';
+      } else if (/\bcompleted\b/i.test(line)) {
+        const name = line.replace(/\bcompleted\b/i, '').replace(/[\s\-\u2013:|]+$/, '').trim() || prev;
+        if (name) out.push({ name, y: null, m: null, done: true });
+        prev = '';
+      } else if (/final\s+payment/i.test(line)) { out.push({ name: line.replace(/^[\d.\s)\-–:|]+/, ''), y: null, m: null }); prev = ''; }
+      else prev = line.replace(/^[\d.\s)\-–:|]+/, '');
+    });
+    return out;
+  }
+  const PAY_STOP = /₹|\bin\b|\bon\b|\bof\b|\bthe\b|\bat\b|\bto\b|\bfrom\b|\bcompletion\b|\bpayable\b|\brequest\b|\bletter\b|\bamount\b|\bpayment\b|\bapplication\b|\bdate\b|\bwork\b/g;
+  function payTok(t) { return String(t).toLowerCase().replace(PAY_STOP, ' ').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean); }
+  function payMatch(rest, stages) {
+    const cand = [];
+    rest.forEach((x, i) => stages.forEach((st, j) => {
+      const a = payTok(x.label), b = payTok(st.name);
+      if (!a.length || !b.length) return;
+      const c = a.filter(w => b.indexOf(w) >= 0).length;
+      const sc = c / Math.min(a.length, b.length);
+      if (sc >= 1) cand.push({ i, j, sc, c });
+    }));
+    cand.sort((p, q) => q.sc - p.sc || q.c - p.c);
+    const mi = {}, mj = {};
+    cand.forEach(c => { if (mi[c.i] == null && mj[c.j] == null) { mi[c.i] = c.j; mj[c.j] = c.i; } });
+    return mi;
+  }
   function renderEmi() {
     const m = current && current.model;
     $('#emiEmpty').classList.toggle('hide', !!m);
     $('#emiBody').classList.toggle('hide', !m);
     if (!m) return;
-    const pct = Math.min(100, Math.max(0, num($('#e_pct').value) || 0));
-    const rate = Math.max(0, num($('#e_rate').value) || 0);
-    const yrs = Math.max(0, num($('#e_yrs').value) || 0);
-    const p = emiPlan(m, pct, rate, yrs);
-    $('#emiVal').textContent = '₹ ' + fmt(p.emi);
-    $('#sD').textContent = '₹ ' + fmt(m.D);
-    $('#sLoan').textContent = '₹ ' + fmt(p.loan);
-    $('#sOwn').textContent = '₹ ' + fmt(p.own);
-    $('#sInt').textContent = '₹ ' + fmt(p.interest);
-    $('#emiRows').innerHTML = p.rows.map(r =>
-      '<tr><td>' + esc(r.short) + '</td><td>' + fmt(r.amount) + '</td><td>' + (r.bank ? fmt(r.bank) : '-') + '</td><td>' + (r.pre ? fmt(r.pre) : '-') + '</td></tr>').join('') +
-      '<tr><td><b>EMI starts</b></td><td></td><td></td><td><b>' + fmt(p.emi) + '</b></td></tr>';
+    if (!$('#bk_date').value) $('#bk_date').value = bkToday();
+    const pct = Math.min(100, Math.max(0, num($('#bk_pct').value) || 0));
+    const iso = $('#bk_date').value || bkToday();
+    const p = bookingPlan(m, pct);
+    const d0 = bkDate(iso, 0), d30 = bkDate(iso, 30);
+    const unitKey = (PROJ.legacy ? 'neo' : PROJ.id) + '|' + (m.key || String(state.unit).trim());
+    const key = unitKey + '|' + (drive.token ? 1 : 0) + '|' + (pl && pl.id || '');
+    if (activeTab === 'emi' && key !== pay.key) {
+      pay.key = key; pay.lsKey = 'pay:' + unitKey; pay.stages = null; pay.state = 'loading';
+      try { pay.ticks = JSON.parse(lsGet(pay.lsKey) || '{}') || {}; } catch (e) { pay.ticks = {}; }
+      payLoad(key);
+    }
+    /* match the pricelist's construction milestones with the annexure stages */
+    const map = pay.stages ? payMatch(p.rest, pay.stages) : {};
+    const rows = p.rest.map((x, i) => {
+      const st = pay.stages && map[i] != null ? pay.stages[map[i]] : null;
+      let when = null, status = 'nodate';
+      if (st && st.done) status = 'done';
+      else if (st && st.y != null) {
+        when = new Date(st.y, st.m + 1, 0);
+        status = when < d0 ? 'past' : when <= d30 ? 'soon' : 'later';
+      } else if (st) status = 'demand';
+      const ticked = status === 'past' && !!pay.ticks[x.short];
+      return { x, st, when, status, ticked, due: status === 'soon' || status === 'done' || ticked };
+    });
+    const overdue = rows.filter(r => (r.status === 'past' && r.ticked) || r.status === 'done'), soon = rows.filter(r => r.status === 'soon');
+    const nowAmt = p.booking;
+    const soonAmt = p.remaining + overdue.reduce((a, r) => a + r.x.amount, 0) + soon.reduce((a, r) => a + r.x.amount, 0);
+    const total30 = nowAmt + soonAmt, balance = m.D - total30;
+    const R = x => '₹ ' + fmt(x);
+    const L = 'style="text-align:left"';
+    const tr = (a, b, bold) => '<tr><td ' + L + '>' + (bold ? '<b>' + a + '</b>' : a) + '</td><td>' + (bold ? '<b>' + b + '</b>' : b) + '</td></tr>';
+    const head = t => '<tr><th colspan="2" ' + L + '>' + t + '</th></tr>';
+    let h = '<div style="background:#0B3D2E;color:#fff;border-radius:10px;padding:16px 16px 14px;text-align:center"><small style="display:block;font-size:14px;opacity:.85">Book your home today with just</small><b style="display:block;font-size:40px;line-height:1.15;font-variant-numeric:tabular-nums;margin:2px 0">' + R(p.booking) + '</b><small style="display:block;font-size:14px;opacity:.9">' + pct + '% of the total value, payable on ' + esc(bkFmt(d0)) + '</small></div>';
+    h += '<div class="stats" style="margin-top:12px"><div><small>Total value</small><b>' + R(m.D) + '</b></div><div><small>Next, by ' + esc(bkFmt(d30)) + '</small><b>' + R(soonAmt) + '</b></div>' +
+      '<div style="grid-column:1/3"><small>Total to pay in the first 30 days (' + esc(bkFmt(d0)) + ' to ' + esc(bkFmt(d30)) + ')</small><b style="font-size:22px">' + R(total30) + '</b></div></div>';
+    h += '<div style="overflow-x:auto;margin-top:12px"><table><tbody>';
+    h += head('1. Today, ' + esc(bkFmt(d0)));
+    h += '<tr style="background:#E6F4EC"><td ' + L + '><b style="font-size:16px">Booking amount (' + pct + '% of total)</b></td><td><b style="font-size:16px">' + fmt(p.booking) + '</b></td></tr>';
+    h += tr('Payable now', fmt(nowAmt), true);
+    h += head('2. Next payment, by ' + esc(bkFmt(d30)) + ' (30 days)');
+    h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', fmt(p.remaining));
+    overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), fmt(r.x.amount)); });
+    soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', fmt(r.x.amount)); });
+    h += tr('Payable in the next 30 days', fmt(soonAmt), true);
+    h += head('3. Total');
+    h += tr('Total in 30 days (1 + 2)', fmt(total30), true);
+    h += tr('Balance after 30 days', fmt(balance));
+    h += '</tbody></table></div>';
+    /* stage-by-stage check against the annexure */
+    h += '<h2 style="margin-top:16px">Stage check against the annexure</h2>';
+    if (pay.state === 'loading') h += '<p class="note">Reading the payment annexure from Drive...</p>';
+    else if (pay.state === 'none') h += '<p class="note">The annexure could not be read, so stage dates are not shown. Connect Drive and check the Annexure tab. Booking and the 30-day balance above are from the pricelist.</p>';
+    else if (pay.state === 'fail') h += '<p class="note">The annexure was found but its dates could not be read as text. Booking and the 30-day balance above are from the pricelist.</p>';
+    else if (pay.file) h += '<p class="note">Annexure: ' + esc(String(pay.file.name || '').replace(/\.pdf$/i, '')) + '. ' + (pay.stages ? pay.stages.length : 0) + ' stages read.</p>';
+    h += '<div style="overflow-x:auto"><table><tbody>';
+    h += tr('<b>Booking, ' + esc(bkFmt(d0)) + '</b><br><small>Due now</small>', '<b>' + fmt(p.booking) + '</b>');
+    h += tr('<b>Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + '</b><br><small>Due by ' + esc(bkFmt(d30)) + '</small>', '<b>' + fmt(p.remaining) + '</b>');
+    rows.forEach(r => {
+      let sub = '';
+      if (r.status === 'past') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ' (' + esc(bkFmt(r.when)) + '). Date has passed.<br><label style="display:flex;gap:8px;align-items:center;margin:6px 0 0;font-size:14px;color:inherit"><input type="checkbox" data-tick="' + esc(r.x.short) + '"' + (r.ticked ? ' checked' : '') + ' style="width:22px;height:22px;margin:0"> Already demanded, add to the next 30 days</label>';
+      else if (r.status === 'done') sub = '<b>Completed</b> per the annexure. Demand is due, added to the next 30 days.';
+      else if (r.status === 'soon') sub = '<b>Due by ' + esc(bkFmt(r.when)) + '</b>, within 30 days.';
+      else if (r.status === 'later') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ', after 30 days.';
+      else if (r.status === 'demand') sub = 'On demand. The annexure gives no fixed date.';
+      else sub = pay.stages ? 'Not found in the annexure. On demand.' : 'Date not available.';
+      h += tr('<b>' + esc(r.x.short) + '</b><br><small>' + sub + '</small>', fmt(r.x.amount));
+    });
+    h += tr('Total value', fmt(m.D), true);
+    h += '</tbody></table></div>';
+    if (p.note) h += '<p class="note">' + esc(p.note) + '</p>';
+    $('#payBody').innerHTML = h;
+    const nm = (PROJ.legacy ? PRICELIST.projectName : PROJ.name) + ' - Unit ' + (m.key || String(state.unit).trim()) + (m.type ? ' (' + m.type + ')' : '');
+    const dl = [nm, 'Total value (excl. registration & stamp duty): Rs. ' + fmt(m.D), '',
+      'BOOK TODAY (' + bkFmt(d0) + ')', 'Booking amount (' + pct + '%): Rs. ' + fmt(p.booking)];
+    dl.push('')
+    dl.push( 'NEXT PAYMENT (by ' + bkFmt(d30) + ')', 'Balance of ' + p.upto.map(x => x.short).join(' + ') + ': Rs. ' + fmt(p.remaining));
+    overdue.forEach(r => dl.push(r.x.short + (r.when ? ' (annexure ' + bkFmt(r.when) + ', demanded)' : ' (completed)') + ': Rs. ' + fmt(r.x.amount)));
+    soon.forEach(r => dl.push(r.x.short + ' (annexure ' + bkFmt(r.when) + '): Rs. ' + fmt(r.x.amount)));
+    dl.push('Payable in the next 30 days: Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS: Rs. ' + fmt(total30), 'Balance after 30 days: Rs. ' + fmt(balance), '', 'LATER STAGES (annexure dates are tentative)');
+    rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
+    bkText = dl.join('\n');
   }
+  async function payLoad(key) {
+    const my = ++pay.token;
+    try {
+      await renderAnn();
+      if (my !== pay.token) return;
+      if (!annDrive.bytes) { pay.state = 'none'; pay.stages = null; }
+      else {
+        pay.file = annDrive.file;
+        pay.stages = await payStages(annDrive.bytes);
+        pay.state = pay.stages.length ? 'ok' : 'fail';
+      }
+    } catch (e) { if (my !== pay.token) return; pay.state = 'fail'; pay.stages = null; }
+    if (my === pay.token) renderEmi();
+  }
+  $('#payBody').addEventListener('change', e => {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.tick != null) { pay.ticks[t.dataset.tick] = t.checked; lsSet(pay.lsKey, JSON.stringify(pay.ticks)); renderEmi(); }
+  });
+  /* Booking amount is a % of total value. The pricelist's payments up to and including "within 30 days" are what is due in the first 30 days; booking comes out of that. */
+  function bookingPlan(m, pct) {
+    const booking = Math.round(m.D * pct / 100);
+    let idx = m.ms.findIndex(x => /within\s+30\s+days/i.test(x.label));
+    let note = '';
+    if (idx < 0) { idx = 0; note = 'This pricelist has no "within 30 days" payment, so only its first payment is treated as due in 30 days.'; }
+    const upto = m.ms.slice(0, idx + 1), rest = m.ms.slice(idx + 1);
+    const due30 = upto.reduce((a, x) => a + x.amount, 0);
+    let remaining = due30 - booking;
+    if (remaining < 0) { remaining = 0; note = 'The booking amount is more than the pricelist asks for in the first 30 days, so nothing more falls due then.'; }
+    return { booking, due30, remaining, upto, rest, note };
+  }
+  $('#bkCopy').addEventListener('click', async () => {
+    try { if (navigator.share) { await navigator.share({ text: bkText }); return; } } catch (e) { return; }
+    try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; setTimeout(() => { $('#bkCopy').textContent = 'Copy summary to send'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
+  });
 
   /* inputs */
   $('#unit').addEventListener('input', e => {
-    const u = e.target.value.replace(/\D/g, '');
+    const u = PROJ.legacy ? e.target.value.replace(/\D/g, '') : e.target.value.replace(/[^0-9A-Za-z \-]/g, '').toUpperCase();
     if (u !== e.target.value) e.target.value = u;
     state.unit = u;
+    if (drive.files.length && !revAll) fillRevisions();
     fillFrom(u);
     render();
   });
@@ -1388,7 +1987,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     el.addEventListener('input', () => { state[k] = el.value; if (state.source) state.edited = true; render(); });
     if (NUMERIC.indexOf(k) >= 0) el.addEventListener('blur', () => { const n = num(el.value); if (isFinite(n)) { el.value = fmt(n); state[k] = el.value; } });
   });
-  ['#e_pct', '#e_rate', '#e_yrs'].forEach(s => $(s).addEventListener('input', renderEmi));
+  ['#bk_pct', '#bk_date'].forEach(s => $(s).addEventListener('input', renderEmi));
 
   /* ---------- shared helpers ---------- */
   function saveBlob(f) {
@@ -1429,7 +2028,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     el.className = 'verdict ' + (hasFail ? 'bad' : hasWarn ? 'warn' : 'ok');
     el.textContent = hasFail ? 'Fix before downloading' : hasWarn ? 'Ready, with notes' : 'Ready to download';
   }
-  const unitName = () => PRICELIST.projectName + ' - ' + String(state.unit).trim();
+  const unitName = () => (PROJ.legacy ? PRICELIST.projectName : PROJ.name) + ' - ' + String(state.unit).trim();
 
   /* ---------- cost sheet document ---------- */
   function buildSheet() {
@@ -1444,6 +2043,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   /* ---------- Google Drive ---------- */
   const DRIVE = {
     pricelistFolder: '108et8XogVNLuKVFCmUJ5KqtH7WZ3C_b7',
+    annexureFolder: '1T1hTsDPP7y1LIsR4iODwQ7MzojwdnPcW',
     presenters: { 4: '13QfO12IDki_eDQCHfoD6Be6Z7i7Zgq4Z', 10: '1edW7GfiilfnEFPC-4GVII2NH85p45yLk' }
   };
   const drive = { token: null, exp: 0, files: [] };
@@ -1501,6 +2101,24 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (cached) return cached;
     throw new Error('Connect Drive to read this file.');
   }
+  const revShort = f => f.name.replace(/^Sobha\s+/i, '').replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, '');
+  let revAll = false;
+  function fillRevisions(all) {
+    if (all !== undefined) revAll = all;
+    const sel = $('#pricelist'), cur = sel.value, d = decodeUnit(state.unit);
+    let list = drive.files.slice();
+    if (!revAll) {
+      let rel = d ? list.filter(f => { const c = fileCoverage(f.name); return !c || c.indexOf(d.wing) >= 0; }) : list;
+      if (!rel.length) rel = list;
+      list = rel.slice(0, 4);
+      const chosen = drive.files.find(f => f.id === cur);
+      if (chosen && list.indexOf(chosen) < 0) list.push(chosen);
+    }
+    let html = '<option value="">Choose a revision</option>' + list.map(f => '<option value="' + esc(f.id) + '">' + esc(revShort(f)) + '</option>').join('');
+    if (!revAll && drive.files.length > list.length) html += '<option value="__all">Show all ' + drive.files.length + ' revisions...</option>';
+    sel.innerHTML = html;
+    if (cur && cur !== '__all') sel.value = cur;
+  }
   async function listRevisions() {
     const q = "'" + DRIVE.pricelistFolder + "' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'";
     let tok = '', all = [];
@@ -1510,8 +2128,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     } while (tok);
     drive.files = all.filter(f => /pricelist/i.test(f.name) && (/\.xlsx$/i.test(f.name) || f.mimeType === 'application/vnd.google-apps.spreadsheet'))
       .sort((a, b) => (revNumber(b.name) || 0) - (revNumber(a.name) || 0) || String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
-    $('#pricelist').innerHTML = '<option value="">Choose a revision</option>' + drive.files.map(f =>
-      '<option value="' + esc(f.id) + '">' + esc(f.name.replace(/^Sobha\s+/i, '').replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, '')) + '</option>').join('');
+    fillRevisions(false);
     if (!drive.files.length) plStatus('No pricelist files were found in the Drive folder.', true);
   }
 
@@ -1523,8 +2140,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     try {
       setDrive('Connecting...', '');
       await driveConnect(cid);
-      await listRevisions();
-      setDrive('Google Drive connected', drive.files.length + ' pricelist files found.');
+      Object.keys(projCache).forEach(k => delete projCache[k]);
+      await loadRevisions();
+      setDrive('Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
       $('#btnConnect').textContent = 'Reconnect';
       fp.wing = null; if (activeTab === 'fp') fpRefresh();
     } catch (e) { setDrive('Drive not connected', e.message); }
@@ -1533,16 +2151,28 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   $('#pricelist').addEventListener('change', async e => {
     const id = e.target.value;
+    if (id === '__all') { fillRevisions(true); try { e.target.showPicker(); } catch (x) {} return; }
     pl = null; plStatus('');
     if (id) {
       const f = drive.files.find(x => x.id === id);
       plStatus('Reading ' + f.name + '...');
       try {
         const file = await getDriveFile(id, f);
-        const parsed = parsePricelist(XLSX, file.bytes);
-        pl = { id, title: f.name.replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, ''), parsed };
-        plStatus(Object.keys(parsed.units).length + ' units. File last changed ' + String(file.modifiedTime || '').slice(0, 10) + '.');
-      } catch (err) { plStatus(String(err.message || err), true); }
+        const title = f.name.replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, '');
+        if (PROJ.legacy) {
+          const parsed = parsePricelist(XLSX, file.bytes);
+          pl = { id, title, parsed };
+          plStatus(Object.keys(parsed.units).length + ' units. File last changed ' + String(file.modifiedTime || '').slice(0, 10) + '.');
+        } else {
+          await new Promise(r => setTimeout(r, 30));
+          const wb = XLSX.read(file.bytes, { type: 'array', cellNF: true });
+          const master = genReadMaster(XLSX, wb);
+          const tpls = genTemplates(XLSX, wb);
+          if (!tpls.length) throw new Error('Pricelist format not recognised: no "Unit Pricelist" sheet.');
+          pl = { id, title, gen: { wb, master, tpls, book: makeBook(XLSX, wb) } };
+          plStatus(master.keys.length + ' units. File last changed ' + String(file.modifiedTime || '').slice(0, 10) + '.');
+        }
+      } catch (err) { pl = null; plStatus(String(err.message || err), true); }
     }
     fillFrom(state.unit);
     render();
@@ -1569,6 +2199,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   async function fpRefresh() {
     const my = ++fp.token;
+    if (!PROJ.legacy || (fpWing() != null && !DRIVE.presenters[fpWing()])) return fpRefreshGeneric(my);
+    $('#fpDrive').classList.add('hide');
     const d = decodeUnit(state.unit);
     const w = d ? d.wing : null;
     await fpLoadForWing(w);
@@ -1680,21 +2312,362 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#annWing').textContent = w == null ? '-' : w;
   }
   let annEval = { checks: [], canExport: false };
-  function renderAnn() {
-    syncAnnInputs();
-    annEval = evaluateAnnexure(state, ann.dates);
-    $('#annChecks').innerHTML = checksHtml(annEval.checks);
-    setVerdict($('#annVerdict'), annEval.checks);
-    $('#annPaper').innerHTML = svgFrom(layoutAnnexure(ann.dates, measure));
+  const annDrive = { files: null, file: null, bytes: null, token: 0 };
+  async function annList() {
+    if (annDrive.files) return annDrive.files;
+    const q = "'" + DRIVE.annexureFolder + "' in parents and trashed=false and mimeType='application/pdf'";
+    let tok = '', all = [];
+    do {
+      const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+      all = all.concat(j.files || []); tok = j.nextPageToken || '';
+    } while (tok);
+    annDrive.files = all;
+    return all;
+  }
+  function annSet(checks, bytes, file) {
+    annEval = { checks, canExport: !!bytes };
+    annDrive.bytes = bytes || null; annDrive.file = file || null;
+    $('#annChecks').innerHTML = checksHtml(checks);
+    setVerdict($('#annVerdict'), checks);
     updateActions();
   }
-  function buildAnn() {
-    const doc = newDoc();
-    drawPrims(doc, layoutAnnexure(ann.dates, measure));
-    const name = unitName() + ' - Payment Annexure.pdf';
-    doc.setProperties({ title: name.replace('.pdf', '') });
-    return { blob: doc.output('blob'), name };
+  async function renderAnn() {
+    if (!PROJ.legacy) return renderAnnGeneric();
+    const my = ++annDrive.token, w = fpWing(), paper = $('#annPaper');
+    $('#annSrc').textContent = 'Source: your Drive folder "Neopolis Payment Annexure", one PDF for each wing.';
+    if (w == null) { paper.innerHTML = ''; annSet([{ s: 'fail', t: 'Enter a unit number', d: 'The annexure is picked by the wing in the unit number.' }]); return; }
+    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; annSet([{ s: 'fail', t: 'Connect Drive first', d: 'Tap Connect Drive at the top. The annexure is read from your Drive every time.' }]); return; }
+    try {
+      annSet([{ s: 'warn', t: 'Looking in Drive for wing ' + w + '...', d: '' }]);
+      const files = await annList();
+      if (my !== annDrive.token) return;
+      const re = new RegExp('Wing\\s*' + w + '\\s*-', 'i');
+      const hits = files.filter(f => re.test(f.name));
+      if (!hits.length) { paper.innerHTML = ''; annSet([{ s: 'ok', t: 'Unit number decoded', d: 'Wing ' + w }, { s: 'fail', t: 'No annexure for wing ' + w + ' in Drive', d: 'The folder has no PDF named for wing ' + w + '. Add it to the "Neopolis Payment Annexure" folder.' }]); return; }
+      hits.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
+      const f = hits[0];
+      const rec = await getDriveFile(f.id, f);
+      if (my !== annDrive.token) return;
+      const checks = [{ s: 'ok', t: 'Unit number decoded', d: 'Wing ' + w }, { s: 'ok', t: 'Annexure found in Drive', d: f.name.replace(/\.pdf$/i, '') + '. Last changed ' + String(f.modifiedTime || '').slice(0, 10) + '.' }];
+      if (hits.length > 1) checks.push({ s: 'warn', t: hits.length + ' files match wing ' + w, d: 'Using the most recently changed one.' });
+      annSet(checks, rec.bytes, f);
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(rec.bytes) }).promise;
+      const page = await doc.getPage(1);
+      const v0 = page.getViewport({ scale: 1 });
+      const cssW = Math.max(300, paper.clientWidth || 340);
+      const vp = page.getViewport({ scale: (cssW * Math.min(2, window.devicePixelRatio || 1)) / v0.width });
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      if (my !== annDrive.token) return;
+      paper.innerHTML = ''; paper.appendChild(cv);
+    } catch (e) {
+      if (my !== annDrive.token) return;
+      paper.innerHTML = '<div class="empty">Preview is not available here. The PDF will still download.</div>';
+      if (!annDrive.bytes) annSet([{ s: 'fail', t: 'Could not read the annexure', d: String(e.message || e) }]);
+    }
   }
+  function buildAnn() {
+    return { blob: new Blob([annDrive.bytes], { type: 'application/pdf' }), name: unitName() + ' - Payment Annexure.pdf' };
+  }
+
+  /* ---------- all projects: pricelist template engine, Drive discovery ---------- */
+  const projCache = {};
+  const nf = x => String(x).trim().toUpperCase().replace(/^0+(?=\d)/, '');
+
+  function evaluateGeneric() {
+    const checks = [];
+    const u = String(state.unit || '').trim();
+    const fail = (t, d) => { checks.push({ s: 'fail', t, d: d || '' }); return { model: null, checks, canExport: false }; };
+    if (!u) return fail('Enter a unit number', PROJ.example ? 'For example ' + PROJ.example + '.' : '');
+    if (!pl || !pl.gen) return fail('Choose a pricelist revision', drive.token ? 'Pick the revision to use for ' + PROJ.name + '.' : 'Connect Drive, then pick the revision to use.');
+    const g = pl.gen;
+    const keys = genResolve(g.master, u);
+    if (!keys.length) return fail('Unit ' + u + ' is not in this revision', 'Check the number, or choose another revision.');
+    if (keys.length > 1) return fail('More than one unit matches ' + u, 'Type the full number, for example ' + keys.slice(0, 3).join(' or ') + '.');
+    const key = keys[0], row = g.master.units[key];
+    state.plan = row.plan; state.type = row.type; state.cls = row.cls; state.carpet = isFinite(row.carpet) ? fmt2(row.carpet) : ''; state.sba = fmt2(row.sba);
+    checks.push({ s: 'ok', t: 'Unit found in the Master Pricelist', d: key + (row.type ? ', ' + row.type : '') + (row.wing ? ', wing ' + row.wing : '') });
+    const tpl = genPickTemplate(g.tpls, key, row);
+    if (!tpl) return fail('No unit sheet lists this unit', 'None of the "Unit Pricelist" sheets in this file includes ' + key + '. It may not be on offer in this revision.');
+    let out;
+    try { out = genCompute(XLSX, g.book, tpl.name, key); }
+    catch (e) { return fail('Could not work out this unit', String(e.message || e)); }
+    if (!isFinite(out.D)) return fail('Total value not found', 'The sheet "' + tpl.name + '" has no total value row.');
+
+    const dd = decodeDigits(u);
+    if (dd && row.wing !== '') {
+      const wOk = String(dd.wing) === String(+row.wing);
+      const fOk = row.floor === '' || nf(row.floor) === nf(dd.floor);
+      if (wOk && fOk) checks.push({ s: 'ok', t: 'Unit number agrees with the pricelist row', d: 'Wing ' + dd.wing + (row.floor !== '' ? ', floor ' + dd.floor : '') });
+      else checks.push({ s: 'warn', t: 'Unit number and pricelist row differ', d: 'Unit number reads as wing ' + dd.wing + ', floor ' + dd.floor + '; the row says wing ' + row.wing + (row.floor !== '' ? ', floor ' + row.floor : '') + '. The pricelist row is used.' });
+    }
+    if (isFinite(row.D) && row.D > 0) {
+      if (Math.abs(out.D - row.D) <= 1) checks.push({ s: 'ok', t: 'Total matches the Master Pricelist', d: 'Total value ' + fmt(out.D) + ' equals the master figure.' });
+      else checks.push({ s: 'fail', t: 'Calculation does not match the pricelist', d: 'Unit sheet gives ' + fmt(out.D) + ', Master Pricelist has ' + fmt(row.D) + '.' });
+    } else checks.push({ s: 'warn', t: 'Total not tied to the Master Pricelist', d: 'No total value column was found to compare with.' });
+    const sum = out.ms.reduce((a, x) => a + x.amount, 0), diff = Math.round(out.D) - sum;
+    if (!out.ms.length) checks.push({ s: 'fail', t: 'No payment milestones found', d: 'The unit sheet has no payment schedule rows.' });
+    else if (Math.abs(diff) <= 10) checks.push({ s: 'ok', t: 'Milestones add up to the total value', d: out.ms.length + ' payments' + (diff ? '; each line is rounded as in the official sheet, so the printed lines differ from the total by Rs. ' + Math.abs(diff) : '') + '.' });
+    else checks.push({ s: 'fail', t: 'Milestones do not add up', d: 'Off by Rs. ' + fmt(diff) + ' against the total value.' });
+
+    const parkNote = out.notes.find(n => /parking/i.test(n) && /\d\s*BHK/i.test(n));
+    const nbAll = parkNote ? (parkNote.match(/(\d)\s*BHK/gi) || []).map(x => x.match(/\d/)[0]) : [];
+    const tb = String(row.type).match(/(\d)\s*BHK/i);
+    if (nbAll.length && tb && nbAll.indexOf(tb[1]) < 0) checks.push({ s: 'warn', t: 'Parking note does not mention ' + tb[1] + ' BHK', d: 'The pricelist note speaks of ' + nbAll.join(' and ') + ' BHK units. Confirm the wording for ' + row.type + '.' });
+
+    PRICELIST.label = out.notes[0] ? out.notes[0].replace(/\.$/, '') : '';
+    const rv = (out.notes[0] || '').match(/Pricelist\s+(R\s*\d+)/i);
+    if (rv) PRICELIST.rev = rv[1].replace(/\s/g, '').toUpperCase();
+    state.source = pl.title;
+    const model = { generic: true, unit: u, key, d: decodeUnit(u), plan: row.plan, type: row.type, carpet: isFinite(row.carpet) ? fmt2(row.carpet) : '', sba: fmt2(row.sba), row,
+      title: PROJ.title, subtitle: out.subtitle, rows: out.rows, notes: out.notes, D: Math.round(out.D), A: out.A, ms: out.ms };
+    return { model, checks, canExport: !checks.some(c => c.s === 'fail') };
+  }
+
+  async function driveList(id) {
+    const q = "'" + id + "' in parents and trashed=false";
+    let tok = '', all = [];
+    do {
+      const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
+      all = all.concat(j.files || []); tok = j.nextPageToken || '';
+    } while (tok);
+    return all;
+  }
+  /* Looks through a project's Drive folder (up to four levels) and sorts the files. */
+  async function discover(p) {
+    if (projCache[p.id]) return projCache[p.id];
+    const files = [];
+    async function walk(id, folder, depth) {
+      const kids = await driveList(id);
+      const subs = [];
+      kids.forEach(k => {
+        if (k.mimeType === 'application/vnd.google-apps.folder') { if (depth < 3) subs.push(k); }
+        else files.push(Object.assign({ folder }, k));
+      });
+      await Promise.all(subs.map(sf => walk(sf.id, folder ? folder + ' / ' + sf.name : sf.name, depth + 1)));
+    }
+    await walk(p.root, '', 0);
+    const isX = f => /\.xlsx?$/i.test(f.name) || f.mimeType === 'application/vnd.ms-excel' || f.mimeType === 'application/vnd.google-apps.spreadsheet' || f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const isPdf = f => f.mimeType === 'application/pdf' || /\.pdf$/i.test(f.name);
+    const lock = f => /^~\$/.test(f.name) || /draft/i.test(f.name);
+    let pricelists = files.filter(f => isX(f) && !lock(f) && /price\s*list/i.test(f.name));
+    if (!pricelists.length) pricelists = files.filter(f => isX(f) && !lock(f));
+    pricelists.sort((a, b) => (revNumber(b.name) || 0) - (revNumber(a.name) || 0) || String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
+    const annex = files.filter(f => isPdf(f) && !/^~\$/.test(f.name) && (/annex/i.test(f.name) || /annex/i.test(f.folder)));
+    const plans = files.filter(f => isPdf(f) && !/^~\$/.test(f.name) && annex.indexOf(f) < 0);
+    return (projCache[p.id] = { pricelists, annex, plans });
+  }
+  async function listGenericRevisions() {
+    plStatus('Looking through the ' + PROJ.name + ' folder in Drive...');
+    const d = await discover(PROJ);
+    drive.files = d.pricelists.slice();
+    fillRevisions(false);
+    if (drive.files.length) plStatus('');
+    else plStatus('No pricelist files were found in the ' + PROJ.name + ' folder in Drive.', true);
+  }
+  function loadRevisions() { return PROJ.legacy ? listRevisions() : listGenericRevisions(); }
+
+  function applyProjectUi() {
+    $('#edit').classList.toggle('hide', !PROJ.legacy);
+    $('#fpDrive').classList.toggle('hide', PROJ.legacy);
+    $('#annPickBox').classList.toggle('hide', PROJ.legacy);
+    $('#unit').placeholder = 'e.g. ' + (PROJ.example || '1001');
+    $('#unit').inputMode = PROJ.legacy ? 'numeric' : 'text';
+    $('#annSrc').textContent = '';
+  }
+  $('#project').addEventListener('change', async e => {
+    PROJ = PROJECTS.find(x => x.id === e.target.value) || PROJECTS[0];
+    lsSet('project', PROJ.id);
+    pl = null; revAll = false; drive.files = []; plStatus('');
+    $('#pricelist').innerHTML = '<option value="">' + (drive.token ? 'Looking for revisions...' : 'Connect Drive to list revisions') + '</option>';
+    fp.wing = null; fp.override = null; fp.pick = ''; annDrive.files = null; annGen.pick = '';
+    $('#unit').value = ''; state.unit = '';
+    applyProjectUi();
+    fillFrom(''); render();
+    if (drive.token && Date.now() <= drive.exp) {
+      try { await loadRevisions(); } catch (err) { plStatus(String(err.message || err), true); }
+    }
+  });
+
+  /* ---------- floor plan, any project: find the page by the unit's areas ---------- */
+  fp.texts = {}; fp.pick = '';
+  function rankFiles(list, wing, key, annex) {
+    const reW = wing != null ? new RegExp('wing[\\s_\\-]*0*' + wing + '(?!\\d)', 'i') : null;
+    const reN = wing != null ? new RegExp('(^|[^\\d])0*' + wing + '(?!\\d)') : null;
+    const tail = genTail(key || '');
+    return list.map(f => {
+      const hay = f.name + ' ' + (f.folder || '');
+      let sc = 0;
+      if (reW && reW.test(hay)) sc += 4;
+      else if (reN && reN.test(f.name)) sc += 1;
+      if (tail.length >= 3 && f.name.indexOf(tail) >= 0) sc += 5;
+      if (/presenter/i.test(hay)) sc += 2;
+      if (/floor\s*plan|layout|unit\s*plan/i.test(hay)) sc += 2;
+      if (!annex && /brochure|master\s*plan|amenit|rera|payment|price|cost/i.test(hay)) sc -= 3;
+      return { f, sc };
+    }).sort((a, b) => b.sc - a.sc || String(b.f.modifiedTime).localeCompare(String(a.f.modifiedTime)));
+  }
+  async function fpTexts(cacheKey, bytes, my) {
+    if (fp.texts[cacheKey]) return fp.texts[cacheKey];
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
+    const out = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      if (my !== fp.token) return null;
+      const pg = await doc.getPage(i);
+      const tc = await pg.getTextContent();
+      out.push(tc.items.map(x => x.str).join(' ').replace(/[,\s]/g, ''));
+      if (i % 6 === 0) $('#fpPaper').innerHTML = '<div class="busy">Searching page ' + i + ' of ' + doc.numPages + ' for this unit\'s areas...</div>';
+    }
+    fp.texts[cacheKey] = out;
+    return out;
+  }
+  async function fpRefreshGeneric(my) {
+    const paper = $('#fpPaper');
+    $('#fpDrive').classList.remove('hide');
+    const fin = (checks, msg) => {
+      fp.checks = checks; fp.page = null; fp.ready = false;
+      if (msg) paper.innerHTML = '<div class="empty">' + esc(msg) + '</div>';
+      fpDone();
+    };
+    $('#fpChoose').textContent = 'Use a file from this phone'; $('#fpChoose').disabled = false;
+    const u = String(state.unit || '').trim();
+    let row = null;
+    if (PROJ.legacy) { const r = pl && pl.parsed && pl.parsed.units[u]; if (r) row = { key: u, plan: r.plan, carpet: r.carpet, sba: r.sba }; }
+    else { const keys = pl && pl.gen ? genResolve(pl.gen.master, u) : []; if (keys.length === 1) row = pl.gen.master.units[keys[0]]; }
+    if (!row) {
+      $('#fpSaved').textContent = '';
+      return fin([{ s: 'fail', t: !u ? 'Enter a unit number' : !pl ? 'Choose a pricelist revision' : 'Unit not found in this revision', d: 'The floor plan page is found from the unit\'s areas in the pricelist.' }], 'The floor plan appears here once the unit is found.');
+    }
+    const d = decodeUnit(u);
+    const wing = d ? d.wing : null;
+    /* source file */
+    let cands = [], err = '';
+    if (drive.token && Date.now() <= drive.exp) { try { cands = (await discover(PROJ)).plans; } catch (e) { err = String(e.message || e); } }
+    if (my !== fp.token) return;
+    const ranked = rankFiles(cands, wing, row.key);
+    const sel = $('#fpSrc');
+    sel.innerHTML = '<option value="">Choose a file</option>' + ranked.map(r => '<option value="' + esc(r.f.id) + '">' + esc((r.f.folder ? r.f.folder + ' / ' : '') + r.f.name) + '</option>').join('');
+    let pickId = fp.pick && ranked.some(r => r.f.id === fp.pick) ? fp.pick : '';
+    let auto = false;
+    if (!pickId && ranked.length && (ranked[0].sc >= 4 || ranked.length === 1) && (ranked.length === 1 || ranked[0].sc > ranked[1].sc)) { pickId = ranked[0].f.id; auto = true; }
+    sel.value = pickId;
+    let src = null;
+    if (fp.override && (fp.override.wing === wing || fp.override.wing == null)) {
+      src = { name: fp.override.name, bytes: fp.override.bytes, key: 'phone:' + fp.override.name + ':' + fp.override.bytes.length, note: 'Chosen from this phone.' };
+    } else if (pickId) {
+      const f = ranked.find(r => r.f.id === pickId).f;
+      $('#fpSaved').textContent = 'Reading ' + f.name + '...';
+      try {
+        const rec = await getDriveFile(f.id, f);
+        src = { name: f.name, bytes: rec.bytes, key: f.id + ':' + f.modifiedTime, note: auto ? 'Picked by wing number from Drive.' : 'Read from Drive.' };
+      } catch (e) { if (my !== fp.token) return; $('#fpSaved').textContent = String(e.message || e); return fin([{ s: 'fail', t: 'Could not read the file', d: String(e.message || e) }], 'The presenter could not be read.'); }
+      if (my !== fp.token) return;
+    }
+    $('#fpSaved').textContent = src ? src.name + '. ' + src.note : (err || (drive.token ? (ranked.length ? 'Choose the presenter file for this unit above.' : 'No presenter or floor plan PDFs were found in the ' + PROJ.name + ' folder. Choose a file from this phone.') : 'Connect Drive to read the presenter, or choose a file from this phone.'));
+    if (!src) return fin([{ s: 'fail', t: 'Presenter PDF needed', d: 'Choose the file that has this unit\'s floor plan.' }], 'The floor plan appears here once a PDF is chosen.');
+    paper.innerHTML = '<div class="busy">Searching for this unit\'s areas...</div>';
+    try {
+      const texts = await fpTexts(src.key, src.bytes, my);
+      if (my !== fp.token || !texts) return;
+      const info = { loaded: true, wing: wing, plan: row.plan, unit: u, sba: fmt2(row.sba), carpet: fmt2(row.carpet), fileName: src.name, pages: texts.length };
+      const isPlot = !isFinite(row.carpet);
+      const s2 = row.sba.toFixed(2), c2 = isPlot ? '' : row.carpet.toFixed(2);
+      const typed = parseInt($('#fpPage').value, 10);
+      let idx = -1, hits = [];
+      if (typed >= 1) { idx = typed - 1; info.source = 'manual'; }
+      else {
+        const both = [], one = [];
+        texts.forEach((t, i) => { if (isPlot) return; const a = t.indexOf(s2) >= 0, b = t.indexOf(c2) >= 0; if (a && b) both.push(i); else if (a) one.push(i); });
+        hits = both.length ? both : one;
+        info.exact = both.length > 0;
+        if (hits.length) {
+          const plan = String(row.plan || '').toUpperCase();
+          const tail = genTail(row.key);
+          const pref = hits.find(i => tail.length >= 3 && texts[i].indexOf(tail) >= 0) || (plan ? hits.find(i => texts[i].toUpperCase().indexOf(plan) >= 0) : undefined);
+          idx = pref != null ? pref : hits[0];
+        }
+        info.source = 'search';
+      }
+      info.idx = idx;
+      if (idx < 0) {
+        fp.checks = [{ s: 'ok', t: 'Presenter PDF loaded', d: src.name + ', ' + texts.length + ' pages' }, isPlot ? { s: 'fail', t: 'Type the page number', d: 'Plots have no carpet area to match. Choose the plot layout or master plan PDF above and type the page number below.' } : { s: 'fail', t: 'No page shows this unit\'s areas', d: 'Looked for SBA ' + fmt2(row.sba) + ' and carpet ' + fmt2(row.carpet) + '. Try another file, or type the page number below.' }];
+        return fin(fp.checks, 'No matching page was found in this file.');
+      }
+      const ex = await extractPage(PDFLib, src.bytes, idx);
+      if (my !== fp.token) return;
+      let text = null;
+      try { text = await pageText(pdfjsLib, ex.bytes); } catch (e) { text = null; }
+      if (my !== fp.token) return;
+      info.text = text;
+      const checks = isPlot ? [{ s: 'ok', t: 'Presenter PDF loaded', d: src.name + ', ' + texts.length + ' pages' }, { s: 'ok', t: 'Page ' + (idx + 1) + ' selected', d: 'Page number typed by you' }, { s: 'warn', t: 'Page is not matched by area', d: 'Check the preview shows plot ' + row.key + '.' }] : floorChecks(info);
+      if (hits.length > 1) checks.push({ s: 'warn', t: hits.length + ' pages show these areas', d: 'Showing page ' + (idx + 1) + '. Others: ' + hits.filter(i => i !== idx).slice(0, 6).map(i => i + 1).join(', ') + '. Type a page number below to change.' });
+      if (info.source === 'search' && !info.exact) checks.push({ s: 'warn', t: 'Only one of the two areas was found', d: 'Check the carpet and SBA on the preview.' });
+      fp.checks = checks;
+      fp.page = { bytes: ex.bytes, idx };
+      fp.ready = !checks.some(c => c.s === 'fail');
+      await fpPreview(ex.bytes, my);
+    } catch (e) {
+      if (my !== fp.token) return;
+      fp.checks = [{ s: 'fail', t: 'Could not read this file', d: String(e && e.message || e) }];
+      paper.innerHTML = '<div class="empty">The page could not be found in this file.</div>';
+    }
+    fpDone();
+  }
+  $('#fpSrc').addEventListener('change', e => { fp.pick = e.target.value; fp.override = null; fpRefresh(); });
+
+  /* ---------- payment annexure, any project ---------- */
+  const annGen = { pick: '', token: 0 };
+  async function renderAnnGeneric() {
+    const my = ++annDrive.token, paper = $('#annPaper');
+    $('#annPickBox').classList.remove('hide');
+    $('#annSrc').textContent = 'Source: the payment annexure PDFs in your ' + PROJ.name + ' folder in Drive.';
+    const u = String(state.unit || '').trim();
+    const keys = pl && pl.gen ? genResolve(pl.gen.master, u) : [];
+    if (keys.length !== 1) { paper.innerHTML = ''; return annSet([{ s: 'fail', t: !u ? 'Enter a unit number' : !pl ? 'Choose a pricelist revision' : 'Unit not found in this revision', d: 'The annexure is picked by the wing in the unit number.' }]); }
+    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; return annSet([{ s: 'fail', t: 'Connect Drive first', d: 'Tap Connect Drive at the top. The annexure is read from your Drive every time.' }]); }
+    const row = pl.gen.master.units[keys[0]];
+    const d = decodeUnit(u), w = d ? d.wing : null;
+    try {
+      annSet([{ s: 'warn', t: 'Looking in Drive' + (w != null ? ' for wing ' + w : '') + '...', d: '' }]);
+      const cands = (await discover(PROJ)).annex;
+      if (my !== annDrive.token) return;
+      const ranked = rankFiles(cands, w, row.key, true);
+      const sel = $('#annPick');
+      sel.innerHTML = '<option value="">Choose a file</option>' + ranked.map(r => '<option value="' + esc(r.f.id) + '">' + esc((r.f.folder ? r.f.folder + ' / ' : '') + r.f.name) + '</option>').join('');
+      const checks = [{ s: 'ok', t: 'Unit found', d: row.key + (w != null ? ', wing ' + w : '') }];
+      if (!ranked.length) { paper.innerHTML = ''; checks.push({ s: 'fail', t: 'No annexure PDF in Drive', d: 'The ' + PROJ.name + ' folder has no annexure PDFs.' }); return annSet(checks); }
+      let pickId = annGen.pick && ranked.some(r => r.f.id === annGen.pick) ? annGen.pick : '';
+      let how = pickId ? 'chosen' : '';
+      if (!pickId) {
+        if (ranked[0].sc >= 4 && (ranked.length === 1 || ranked[0].sc > ranked[1].sc)) { pickId = ranked[0].f.id; how = 'wing'; }
+        else if (ranked.length === 1) { pickId = ranked[0].f.id; how = 'only'; }
+      }
+      sel.value = pickId;
+      if (!pickId) { paper.innerHTML = ''; checks.push({ s: 'fail', t: 'Choose the annexure file', d: ranked.length + ' annexure files are in Drive and none is clearly the one for ' + (w != null ? 'wing ' + w : 'this unit') + '. Pick it above.' }); return annSet(checks); }
+      const f = ranked.find(r => r.f.id === pickId).f;
+      const rec = await getDriveFile(f.id, f);
+      if (my !== annDrive.token) return;
+      checks.push({ s: 'ok', t: 'Annexure found in Drive', d: f.name.replace(/\.pdf$/i, '') + '. Last changed ' + String(f.modifiedTime || '').slice(0, 10) + '.' });
+      if (how === 'only') checks.push({ s: 'warn', t: 'Only one annexure file in Drive', d: 'It is not named for wing ' + w + '. Check it is the right one.' });
+      annSet(checks, rec.bytes, f);
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(rec.bytes) }).promise;
+      const page = await doc.getPage(1);
+      const v0 = page.getViewport({ scale: 1 });
+      const cssW = Math.max(300, paper.clientWidth || 340);
+      const vp = page.getViewport({ scale: (cssW * Math.min(2, window.devicePixelRatio || 1)) / v0.width });
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      if (my !== annDrive.token) return;
+      paper.innerHTML = ''; paper.appendChild(cv);
+    } catch (e) {
+      if (my !== annDrive.token) return;
+      paper.innerHTML = '<div class="empty">Preview is not available here. The PDF will still download.</div>';
+      if (!annDrive.bytes) annSet([{ s: 'fail', t: 'Could not read the annexure', d: String(e.message || e) }]);
+    }
+  }
+  $('#annPick').addEventListener('change', e => { annGen.pick = e.target.value; renderAnn(); });
 
   /* ---------- tabs and actions ---------- */
   let activeTab = 'sheet';
@@ -1719,6 +2692,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#actions').classList.toggle('hide', which === 'emi');
     if (which === 'fp') fpRefresh();
     if (which === 'ann') renderAnn();
+    if (which === 'emi') renderEmi();
     updateActions();
   }
   Object.keys(PANES).forEach(k => $(PANES[k][0]).addEventListener('click', () => tab(k)));
@@ -1726,8 +2700,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) shareFiles([d.build()]); });
   $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) shareFiles([DOCS.sheet.build(), DOCS.fp.build()]); });
 
+  $('#project').innerHTML = PROJECTS.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
+  $('#project').value = PROJ.id;
+  applyProjectUi();
   fillFrom('');
-  syncAnnInputs();
   render();
   tab('sheet');
 })();
