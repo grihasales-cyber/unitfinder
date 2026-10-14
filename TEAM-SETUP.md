@@ -52,9 +52,9 @@ GitHub builds the .apk. To install updates over each other, every build must be 
 
 Share that link with the team. On Android: open the link, download, open the file, and allow "Install unknown apps" for Chrome or Files when asked.
 
-### Optional: hide the address bar in the Android app
+### Address bar in the Android app
 
-Without this step the Android app works, but shows a thin address bar at the top. To remove it, Android needs a small file at `https://grihasales-cyber.github.io/.well-known/assetlinks.json`. That needs a second GitHub repository named exactly `grihasales-cyber.github.io`, holding the file `android/assetlinks.json` from this repo as `.well-known/assetlinks.json`, with Pages turned on. Claude can set this up if you allow it.
+Done. `https://grihasales-cyber.github.io/.well-known/assetlinks.json` is published from the `grihasales-cyber.github.io` repository and names the signing key Claude sent you. If you ever change the signing key, update the fingerprint in that file (and in `android/assetlinks.json`).
 
 ---
 

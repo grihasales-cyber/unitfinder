@@ -27,7 +27,7 @@ Cost sheet, Floor plan, Annexure, Payments.
 - Sheet "Unit Finder Admin": Users (email, role, active), Presets (team revision per project, several allowed for wing-wise Neopolis files), Log (signin/search/download/share/copy).
 - Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list, team revisions, usage stats.
 - Team revision is preselected (`applyPreset`) but people can change it (`revManual`).
-- Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json needs a `grihasales-cyber.github.io` repo to hide the URL bar.
+- Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json is published from the `grihasales-cyber/grihasales-cyber.github.io` repo (site root redirects to /unitfinder/).
 
 ## Projects and Drive root folder IDs
 Neopolis (legacy path) 18frM9pjqJZJ9Y7G3IaaVMnlfHS_IWhdZ
