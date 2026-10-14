@@ -30,7 +30,13 @@ jobs:
           KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/uf.jks"
+            # Copy-paste can add spaces or line breaks; keep only base64 characters.
+            printf '%s' "$KS_B64" | tr -cd 'A-Za-z0-9+/=' | base64 -d > "$RUNNER_TEMP/uf.jks" \
+              || { echo "::error::ANDROID_KEYSTORE_B64 is not the text of keystore-base64.txt. Paste the whole file content again."; exit 1; }
+            KS_PW=$(printf '%s' "$KS_PW" | tr -d ' \r\n\t')
+            keytool -list -keystore "$RUNNER_TEMP/uf.jks" -storepass "$KS_PW" > /dev/null \
+              || { echo "::error::The key and ANDROID_KEYSTORE_PASSWORD do not match. Paste password.txt again."; exit 1; }
+            echo "::add-mask::$KS_PW"
             echo "UF_KEYSTORE_PASSWORD=$KS_PW" >> "$GITHUB_ENV"
             echo "SIGNED=1" >> "$GITHUB_ENV"
           else
