@@ -2935,9 +2935,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   function teamRedirectSignIn(cid) {
     const st = Math.random().toString(36).slice(2) + Date.now().toString(36);
     lsSet('teamAuthState', st);
-    const q = new URLSearchParams({ client_id: cid, redirect_uri: location.origin + location.pathname.replace(/index\.html$/, ''), response_type: 'token', scope: 'openid email', state: st });
-    const hint = lsGet('teamEmail');
-    if (hint) q.set('login_hint', hint); else q.set('prompt', 'select_account');
+    /* Always show Google's account list. A login_hint makes Android jump to "add account to this
+       device", which fails when the account is already on the phone. */
+    const q = new URLSearchParams({ client_id: cid, redirect_uri: location.origin + location.pathname.replace(/index\.html$/, ''), response_type: 'token', scope: 'openid email', state: st, prompt: 'select_account' });
     location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + q.toString());
   }
   async function teamResume() {
