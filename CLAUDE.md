@@ -22,7 +22,7 @@ Cost sheet, Floor plan, Annexure, Payments.
 - All numbers use Indian grouping (1,00,000) everywhere (`fmt`, `fmt2` -> `inGroup`).
 
 ## Team version (backend/, android/, TEAM-SETUP.md)
-- Team mode turns on when `TEAM_API` in index.html (or `localStorage.teamApi`) is an Apps Script `/exec` URL. Empty = personal mode, unchanged (direct Drive with drive.readonly).
+- Team mode is ON: `TEAM_API` in index.html is the live Apps Script `/exec` URL (deployed from griha.sales@gmail.com, sheet "Unit Finder Admin"). Opening the app with `?personal=1` falls back to personal mode (direct Drive with drive.readonly).
 - In team mode people sign in with GIS token client, scope `openid email` only. Every Drive call goes through `teamCall('drive', {path})` to `backend/Code.gs`, which runs as the folder owner (griha.sales@gmail.com), verifies the token's aud = our client ID, checks the email against the Users sheet, and only allows read-only paths inside the ROOTS folders.
 - Sheet "Unit Finder Admin": Users (email, role, active), Presets (team revision per project, several allowed for wing-wise Neopolis files), Log (signin/search/download/share/copy).
 - Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list, team revisions, usage stats.

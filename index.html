@@ -2107,8 +2107,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   /* ---------- team mode: Google sign-in, access list and Drive through the team server ---------- */
   /* The team server is a Google Apps Script web app (backend/Code.gs). Empty = personal mode, reading Drive directly. */
-  const TEAM_API = '';
-  const team = { api: TEAM_API || lsGet('teamApi') || '', email: '', role: '', presets: {}, busy: 0, wait: [] };
+  const TEAM_API = 'https://script.google.com/macros/s/AKfycbzY2pByl9a9dKQCXPadhxAbEfnJeDuW19j4oqP3Oi30oDkCg0Nb-WTkWw1IwAiOZ7qE/exec';
+  /* ?personal=1 opens the app in personal mode (direct Drive), a fallback if the team server is down. */
+  const team = { api: /[?&]personal=1\b/.test(location.search) ? '' : (TEAM_API || lsGet('teamApi') || ''), email: '', role: '', presets: {}, busy: 0, wait: [] };
   team.on = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(team.api);
   if (team.on) CONNECT = 'Sign in';
   const pause = ms => new Promise(r => setTimeout(r, ms));
