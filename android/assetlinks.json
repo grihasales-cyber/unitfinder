@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "in.grihasales.unitfinder",
+    "sha256_cert_fingerprints": ["FC:26:CD:06:6D:7A:17:F7:F6:18:55:92:D2:4A:7F:46:FB:AC:D3:C0:DD:88:C2:4D:E7:AA:27:4C:55:7B:C1:03"]
+  }
+}]

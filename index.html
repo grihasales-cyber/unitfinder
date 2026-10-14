@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17232E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Unit Finder</title>
 <style>
 :root{
@@ -31,8 +34,8 @@ select:disabled,input:disabled{background:#EEF1F3}
 .decoded div:last-child{border-right:0}
 .decoded small{display:block;font-size:12px;color:var(--mut)}
 .decoded b{font-size:20px;font-variant-numeric:tabular-nums}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);margin:16px 16px 0;border:1px solid #9AA8B1;border-radius:6px;overflow:hidden;background:#fff}
-.tabs button{font:inherit;font-size:14px;font-weight:600;border:0;background:transparent;padding:12px 2px;min-height:44px;color:var(--ink);cursor:pointer}
+.tabs{display:grid;grid-template-columns:repeat(var(--tabn,4),1fr);margin:16px 16px 0;border:1px solid #9AA8B1;border-radius:6px;overflow:hidden;background:#fff}
+.tabs button{font:inherit;font-size:var(--tabf,14px);font-weight:600;border:0;background:transparent;padding:12px 2px;min-height:44px;color:var(--ink);cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--ink);color:#fff}
 .verdict{font-weight:600;font-size:16px;margin:0 0 8px}
 .verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.bad{color:var(--bad)}
@@ -55,6 +58,13 @@ summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:
 .note{font-size:13px;color:var(--mut);margin:8px 0 0}
 .banner{background:#FFF4DF;border:1px solid #E2B661;border-radius:4px;padding:10px 12px;font-size:14px;margin-top:12px}
 .hide{display:none}
+.bars{display:grid;gap:6px;margin:6px 0 0}
+.bars div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font-size:13px;position:relative;padding:6px 8px;background:#fff;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.bars i{position:absolute;left:0;top:0;bottom:0;background:#DCE9E2}
+.bars span,.bars b{position:relative;overflow-wrap:anywhere}
+.days{display:flex;align-items:flex-end;gap:2px;height:70px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:6px}
+.days i{flex:1;background:#1D7553;min-height:2px;border-radius:2px 2px 0 0}
+.chip{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:9px;background:#E7ECEF;color:var(--ink);margin-left:4px;vertical-align:1px}
 .emi-hero{padding:4px 0 12px}
 .emi-hero small{font-size:13px;color:var(--mut);display:block}
 .emi-hero b{font-size:36px;font-variant-numeric:tabular-nums;line-height:1.15}
@@ -94,6 +104,9 @@ canvas{display:block;width:100%;height:auto}
       <label for="clientId">OAuth client ID</label>
       <input id="clientId" autocomplete="off" placeholder="1234567890-abc.apps.googleusercontent.com">
       <p class="note">Created once in Google Cloud Console as a Web application. Add this page's address as an authorised JavaScript origin: <b id="originText"></b></p>
+      <label for="teamApi" style="margin-top:10px">Team server address (optional)</label>
+      <input id="teamApi" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+      <p class="note">With a team server, people sign in with Google and the app reads Drive through it. Leave empty to read your own Drive directly.</p>
     </details>
   </div>
   <div class="panel">
@@ -148,6 +161,7 @@ canvas{display:block;width:100%;height:auto}
   <button role="tab" id="tabFp" aria-selected="false" aria-controls="paneFp">Floor plan</button>
   <button role="tab" id="tabAnn" aria-selected="false" aria-controls="paneAnn">Annexure</button>
   <button role="tab" id="tabEmi" aria-selected="false" aria-controls="paneEmi">Payments</button>
+  <button role="tab" id="tabAdm" aria-selected="false" aria-controls="paneAdm" class="hide">Admin</button>
 </div>
 
 <section id="paneSheet" role="tabpanel" aria-labelledby="tabSheet">
@@ -205,6 +219,33 @@ canvas{display:block;width:100%;height:auto}
       <button id="bkCopy" class="btn alt" style="width:100%;margin-top:12px">Copy summary to send</button>
       <p class="note">Booking replaces the application amount. Stage dates come from this wing's payment annexure and are tentative; payment falls due on demand. A stage dated by month is taken as the last day of that month. Stamp duty and registration are not included.</p>
     </div>
+  </div>
+</section>
+
+<section id="paneAdm" role="tabpanel" aria-labelledby="tabAdm" class="hide">
+  <div class="panel">
+    <h2 style="margin-top:0">Team access</h2>
+    <p class="note" style="margin-top:0">Only these Google accounts can use the app. Admins also see this tab.</p>
+    <div class="row" style="grid-template-columns:1fr auto;margin-top:10px">
+      <div><label for="admEmail">Email</label><input id="admEmail" type="email" autocomplete="off" placeholder="name@gmail.com"></div>
+      <div><label for="admRole">Role</label><select id="admRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+    </div>
+    <button id="admAdd" class="btn" style="width:100%;margin-top:10px">Give access</button>
+    <p id="admMsg" class="note" role="status"></p>
+    <div style="overflow-x:auto;margin-top:10px"><table><tbody id="admUsers"></tbody></table></div>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <h2 style="margin-top:0">Team pricelist revision</h2>
+    <p class="note" style="margin-top:0">The team's app opens on this revision. They can still pick another one. For Neopolis, add one per wing group; the app picks the one that covers the unit's wing.</p>
+    <button id="admPreset" class="btn alt" style="width:100%;margin-top:10px" disabled>Set the chosen revision for the team</button>
+    <div style="overflow-x:auto;margin-top:10px"><table><tbody id="admPresets"></tbody></table></div>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <div class="row" style="grid-template-columns:1fr auto;align-items:end">
+      <h2 style="margin:0">Usage</h2>
+      <select id="admDays" aria-label="Period" style="min-height:40px"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option></select>
+    </div>
+    <div id="admStats" style="margin-top:10px"><p class="note">Loading...</p></div>
   </div>
 </section>
 
@@ -726,6 +767,7 @@ const DEFAULT_NOTES = [
 
 /* Rows already extracted from the pricelist. Only A3 - 4131 is stored in this prototype. */
 const SAVED_UNITS = {};
+var CONNECT = 'Connect Drive';
 
 function inGroup(d) {
   return d.replace(/\B(?=(\d\d)+\d(?!\d))/g, ',');
@@ -1554,7 +1596,7 @@ async function pageText(pdfjsLib, bytes) {
 function floorChecks(info) {
   const checks = [];
   if (!info.loaded) {
-    checks.push({ s: 'fail', t: 'Presenter PDF needed', d: 'Connect Drive, or choose the wing ' + info.wing + ' presenter PDF from this phone.' });
+    checks.push({ s: 'fail', t: 'Presenter PDF needed', d: CONNECT + ', or choose the wing ' + info.wing + ' presenter PDF from this phone.' });
     return checks;
   }
   checks.push({ s: 'ok', t: 'Presenter PDF loaded', d: info.fileName + ', ' + info.pages + ' pages' });
@@ -1714,10 +1756,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     Object.keys(ids).forEach(k => { state[k] = ''; $('#' + ids[k]).value = ''; });
     ['printedV', 'printedGst', 'printedA', 'rowWing', 'rowFloor', 'source'].forEach(k => { state[k] = ''; });
     state.edited = false;
-    if (!PROJ.legacy) { showBanner(u && !pl ? 'Connect Drive and choose a pricelist revision to load this unit.' : ''); return; }
+    if (!PROJ.legacy) { showBanner(u && !pl ? CONNECT + ' and choose a pricelist revision to load this unit.' : ''); return; }
     const d = decodeUnit(u);
     if (!d) { showBanner(''); return; }
-    if (!pl) { showBanner('Connect Drive and choose a pricelist revision to load this unit.'); return; }
+    if (!pl) { showBanner(CONNECT + ' and choose a pricelist revision to load this unit.'); return; }
     const sc = pickSchedule(pl.parsed, d.wing);
     if (sc) applySchedule(sc);
     syncAnnInputs();
@@ -1775,6 +1817,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       }
     }
     current = ev;
+    noteSearch();
 
     const hasFail = ev.checks.some(c => c.s === 'fail');
     const hasWarn = ev.checks.some(c => c.s === 'warn');
@@ -1907,7 +1950,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     /* stage-by-stage check against the annexure */
     h += '<h2 style="margin-top:16px">Stage check against the annexure</h2>';
     if (pay.state === 'loading') h += '<p class="note">Reading the payment annexure from Drive...</p>';
-    else if (pay.state === 'none') h += '<p class="note">The annexure could not be read, so stage dates are not shown. Connect Drive and check the Annexure tab. Booking and the 30-day balance above are from the pricelist.</p>';
+    else if (pay.state === 'none') h += '<p class="note">The annexure could not be read, so stage dates are not shown. ' + CONNECT + ' and check the Annexure tab. Booking and the 30-day balance above are from the pricelist.</p>';
     else if (pay.state === 'fail') h += '<p class="note">The annexure was found but its dates could not be read as text. Booking and the 30-day balance above are from the pricelist.</p>';
     else if (pay.file) h += '<p class="note">Annexure: ' + esc(String(pay.file.name || '').replace(/\.pdf$/i, '')) + '. ' + (pay.stages ? pay.stages.length : 0) + ' stages read.</p>';
     h += '<div style="overflow-x:auto"><table><tbody>';
@@ -1969,6 +2012,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     return { booking, due30, remaining, upto, rest, note };
   }
   $('#bkCopy').addEventListener('click', async () => {
+    logEv('copy', { detail: 'Payment summary' });
     try { if (navigator.share) { await navigator.share({ text: bkText }); return; } } catch (e) { return; }
     try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; setTimeout(() => { $('#bkCopy').textContent = 'Copy summary to send'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
   });
@@ -1981,6 +2025,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (drive.files.length && !revAll) fillRevisions();
     fillFrom(u);
     render();
+    applyPreset();
   });
   Object.keys(ids).forEach(k => {
     const el = $('#' + ids[k]);
@@ -2047,6 +2092,103 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     presenters: { 4: '13QfO12IDki_eDQCHfoD6Be6Z7i7Zgq4Z', 10: '1edW7GfiilfnEFPC-4GVII2NH85p45yLk' }
   };
   const drive = { token: null, exp: 0, files: [] };
+
+  /* ---------- team mode: Google sign-in, access list and Drive through the team server ---------- */
+  /* The team server is a Google Apps Script web app (backend/Code.gs). Empty = personal mode, reading Drive directly. */
+  const TEAM_API = '';
+  const team = { api: TEAM_API || lsGet('teamApi') || '', email: '', role: '', presets: {}, busy: 0, wait: [] };
+  team.on = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(team.api);
+  if (team.on) CONNECT = 'Sign in';
+  const pause = ms => new Promise(r => setTimeout(r, ms));
+  async function teamCall(act, data) {
+    while (team.busy >= 4) await new Promise(r => team.wait.push(r));
+    team.busy++;
+    try {
+      for (let i = 0; ; i++) {
+        let j;
+        try {
+          const r = await fetch(team.api, { method: 'POST', body: JSON.stringify(Object.assign({ tok: drive.token, act }, data || {})) });
+          j = await r.json();
+        } catch (e) {
+          if (i < 1) { await pause(800); continue; }
+          throw new Error('Could not reach the team server. Check your connection.');
+        }
+        if (!j.ok && /too many|simultaneous|try again|timed out/i.test(j.err || '') && i < 2) { await pause(1200 * (i + 1)); continue; }
+        if (!j.ok && j.err === 'signin') { drive.token = null; throw new Error('Sign-in expired. Tap Sign in.'); }
+        if (!j.ok && j.err === 'noaccess' && act !== 'me') { drive.token = null; throw new Error('Your access to the app has been removed. Ask your admin.'); }
+        return j;
+      }
+    } finally {
+      team.busy--;
+      const next = team.wait.shift(); if (next) next();
+    }
+  }
+  function isPreset(id) { return (team.presets[PROJ.id] || []).some(p => p.id === id); }
+  /* The team revision for this project; for wing-wise pricelists, the one that covers the unit's wing. */
+  function presetFor(wing) {
+    const list = (team.presets[PROJ.id] || []).map(p => drive.files.find(f => f.id === p.id)).filter(Boolean);
+    if (!list.length) return null;
+    const cov = f => fileCoverage(f.name);
+    return (wing != null && list.find(f => cov(f) && cov(f).indexOf(wing) >= 0)) || list.find(f => !cov(f)) || list[0];
+  }
+  let revManual = false, presetting = false;
+  function applyPreset() {
+    if (!team.on || revManual || !drive.files.length) return;
+    const d = decodeUnit(state.unit);
+    const f = presetFor(d ? d.wing : null);
+    const sel = $('#pricelist');
+    if (!f || sel.value === f.id) return;
+    if (!Array.from(sel.options).some(o => o.value === f.id)) {
+      const o = document.createElement('option');
+      o.value = f.id; o.textContent = revShort(f) + ' (team)';
+      sel.insertBefore(o, sel.options[1] || null);
+    }
+    sel.value = f.id;
+    presetting = true;
+    try { sel.dispatchEvent(new Event('change')); } finally { presetting = false; }
+  }
+
+  /* usage log: searches, downloads, shares */
+  const logQ = [];
+  let logTimer = 0, lastSearch = '', searchTimer = 0;
+  function logEv(type, extra) {
+    if (!team.on || !drive.token) return;
+    logQ.push(Object.assign({ t: Date.now(), type, project: PROJ.name, unit: String(state.unit || '').trim(), rev: pl ? pl.title : '' }, extra || {}));
+    clearTimeout(logTimer); logTimer = setTimeout(logFlush, 4000);
+  }
+  function logFlush() {
+    clearTimeout(logTimer);
+    if (!logQ.length || !drive.token) return;
+    const ev = logQ.splice(0, 50);
+    try { fetch(team.api, { method: 'POST', keepalive: true, body: JSON.stringify({ tok: drive.token, act: 'log', ev }) }).catch(() => {}); } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') logFlush(); });
+  /* A search counts once the unit has loaded and stayed on screen for 2.5 seconds. */
+  function noteSearch() {
+    if (!team.on || !current || !current.model) return;
+    const k = PROJ.id + '|' + String(state.unit).trim() + '|' + (pl ? pl.id : '');
+    if (k === lastSearch) return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const now = PROJ.id + '|' + String(state.unit).trim() + '|' + (pl ? pl.id : '');
+      if (now === k && current && current.model && lastSearch !== k) { lastSearch = k; logEv('search'); }
+    }, 2500);
+  }
+  async function teamSignedIn() {
+    const j = await teamCall('me');
+    if (!j.ok) {
+      drive.token = null;
+      if (j.err === 'noaccess') throw new Error('No access for ' + j.email + '. Ask your admin to add this email.');
+      throw new Error(j.err || 'Sign-in failed');
+    }
+    team.email = j.email; team.role = j.role; team.presets = j.presets || {};
+    lsSet('teamEmail', j.email);
+    const adm = j.role === 'admin';
+    $('#tabAdm').classList.toggle('hide', !adm);
+    document.querySelector('.tabs').style.setProperty('--tabn', adm ? 5 : 4);
+    document.querySelector('.tabs').style.setProperty('--tabf', adm ? '13px' : '14px');
+    logEv('signin');
+  }
   $('#clientId').value = lsGet('clientId') || '312567417829-q5522gmvlqn15li1chttraipths7mjom.apps.googleusercontent.com';
   $('#originText').textContent = location.origin && location.origin !== 'null' ? location.origin : '(open this app from a web address, not from Downloads)';
 
@@ -2067,7 +2209,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     return new Promise((resolve, reject) => {
       const tc = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        scope: team.on ? 'openid email' : 'https://www.googleapis.com/auth/drive.readonly',
+        login_hint: team.on ? (lsGet('teamEmail') || undefined) : undefined,
         callback: r => {
           if (r.error) return reject(new Error(r.error_description || r.error));
           drive.token = r.access_token; drive.exp = Date.now() + (Number(r.expires_in || 3600) - 60) * 1000; resolve();
@@ -2078,9 +2221,19 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     });
   }
   async function dApi(path, opt) {
-    if (!drive.token || Date.now() > drive.exp) throw new Error('Drive session expired. Tap Connect Drive.');
+    if (!drive.token || Date.now() > drive.exp) throw new Error('Drive session expired. Tap ' + CONNECT + '.');
+    if (team.on) {
+      const j = await teamCall('drive', { path });
+      if (!j.ok) throw new Error(j.err === 'Not allowed' || j.status === 403 || j.status === 404 ? 'This file is not available through the team app.' : (j.err || 'Drive error'));
+      if (opt && opt.bin) {
+        const b = atob(j.b64), u = new Uint8Array(b.length);
+        for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+        return u.buffer;
+      }
+      return j.json;
+    }
     const r = await fetch('https://www.googleapis.com/drive/v3/' + path, { headers: { Authorization: 'Bearer ' + drive.token } });
-    if (r.status === 401) { drive.token = null; throw new Error('Drive session expired. Tap Connect Drive.'); }
+    if (r.status === 401) { drive.token = null; throw new Error('Drive session expired. Tap ' + CONNECT + '.'); }
     if (r.status === 403 || r.status === 404) throw new Error('Drive says this file is not available to your account (' + r.status + ').');
     if (!r.ok) throw new Error('Drive error ' + r.status);
     return opt && opt.bin ? r.arrayBuffer() : r.json();
@@ -2099,7 +2252,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       return rec;
     }
     if (cached) return cached;
-    throw new Error('Connect Drive to read this file.');
+    throw new Error(CONNECT + ' to read this file.');
   }
   const revShort = f => f.name.replace(/^Sobha\s+/i, '').replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, '');
   let revAll = false;
@@ -2114,7 +2267,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       const chosen = drive.files.find(f => f.id === cur);
       if (chosen && list.indexOf(chosen) < 0) list.push(chosen);
     }
-    let html = '<option value="">Choose a revision</option>' + list.map(f => '<option value="' + esc(f.id) + '">' + esc(revShort(f)) + '</option>').join('');
+    let html = '<option value="">Choose a revision</option>' + list.map(f => '<option value="' + esc(f.id) + '">' + esc(revShort(f)) + (team.on && isPreset(f.id) ? ' (team)' : '') + '</option>').join('');
     if (!revAll && drive.files.length > list.length) html += '<option value="__all">Show all ' + drive.files.length + ' revisions...</option>';
     sel.innerHTML = html;
     if (cur && cur !== '__all') sel.value = cur;
@@ -2138,19 +2291,22 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     lsSet('clientId', cid);
     $('#btnConnect').disabled = true;
     try {
-      setDrive('Connecting...', '');
+      setDrive(team.on ? 'Signing in...' : 'Connecting...', '');
       await driveConnect(cid);
+      if (team.on) await teamSignedIn();
       Object.keys(projCache).forEach(k => delete projCache[k]);
       await loadRevisions();
-      setDrive('Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
-      $('#btnConnect').textContent = 'Reconnect';
+      setDrive(team.on ? 'Signed in as ' + team.email : 'Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
+      $('#btnConnect').textContent = team.on ? 'Sign in again' : 'Reconnect';
+      if (activeTab === 'adm') admLoad();
       fp.wing = null; if (activeTab === 'fp') fpRefresh();
-    } catch (e) { setDrive('Drive not connected', e.message); }
+    } catch (e) { setDrive(team.on ? 'Not signed in' : 'Drive not connected', e.message); }
     $('#btnConnect').disabled = false;
   });
 
   $('#pricelist').addEventListener('change', async e => {
     const id = e.target.value;
+    if (!presetting && id !== '__all') revManual = true;
     if (id === '__all') { fillRevisions(true); try { e.target.showPicker(); } catch (x) {} return; }
     pl = null; plStatus('');
     if (id) {
@@ -2176,6 +2332,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     }
     fillFrom(state.unit);
     render();
+    if (activeTab === 'adm') admPresets();
   });
 
   /* ---------- floor plan ---------- */
@@ -2336,7 +2493,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const my = ++annDrive.token, w = fpWing(), paper = $('#annPaper');
     $('#annSrc').textContent = 'Source: your Drive folder "Neopolis Payment Annexure", one PDF for each wing.';
     if (w == null) { paper.innerHTML = ''; annSet([{ s: 'fail', t: 'Enter a unit number', d: 'The annexure is picked by the wing in the unit number.' }]); return; }
-    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; annSet([{ s: 'fail', t: 'Connect Drive first', d: 'Tap Connect Drive at the top. The annexure is read from your Drive every time.' }]); return; }
+    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; annSet([{ s: 'fail', t: CONNECT + ' first', d: 'Tap ' + CONNECT + ' at the top. The annexure is read from your Drive every time.' }]); return; }
     try {
       annSet([{ s: 'warn', t: 'Looking in Drive for wing ' + w + '...', d: '' }]);
       const files = await annList();
@@ -2380,7 +2537,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const u = String(state.unit || '').trim();
     const fail = (t, d) => { checks.push({ s: 'fail', t, d: d || '' }); return { model: null, checks, canExport: false }; };
     if (!u) return fail('Enter a unit number', PROJ.example ? 'For example ' + PROJ.example + '.' : '');
-    if (!pl || !pl.gen) return fail('Choose a pricelist revision', drive.token ? 'Pick the revision to use for ' + PROJ.name + '.' : 'Connect Drive, then pick the revision to use.');
+    if (!pl || !pl.gen) return fail('Choose a pricelist revision', drive.token ? 'Pick the revision to use for ' + PROJ.name + '.' : CONNECT + ', then pick the revision to use.');
     const g = pl.gen;
     const keys = genResolve(g.master, u);
     if (!keys.length) return fail('Unit ' + u + ' is not in this revision', 'Check the number, or choose another revision.');
@@ -2466,7 +2623,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (drive.files.length) plStatus('');
     else plStatus('No pricelist files were found in the ' + PROJ.name + ' folder in Drive.', true);
   }
-  function loadRevisions() { return PROJ.legacy ? listRevisions() : listGenericRevisions(); }
+  async function loadRevisions() { await (PROJ.legacy ? listRevisions() : listGenericRevisions()); applyPreset(); }
 
   function applyProjectUi() {
     $('#edit').classList.toggle('hide', !PROJ.legacy);
@@ -2479,8 +2636,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   $('#project').addEventListener('change', async e => {
     PROJ = PROJECTS.find(x => x.id === e.target.value) || PROJECTS[0];
     lsSet('project', PROJ.id);
-    pl = null; revAll = false; drive.files = []; plStatus('');
-    $('#pricelist').innerHTML = '<option value="">' + (drive.token ? 'Looking for revisions...' : 'Connect Drive to list revisions') + '</option>';
+    pl = null; revAll = false; revManual = false; drive.files = []; plStatus('');
+    $('#pricelist').innerHTML = '<option value="">' + (drive.token ? 'Looking for revisions...' : CONNECT + ' to list revisions') + '</option>';
     fp.wing = null; fp.override = null; fp.pick = ''; annDrive.files = null; annGen.pick = '';
     $('#unit').value = ''; state.unit = '';
     applyProjectUi();
@@ -2564,7 +2721,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       } catch (e) { if (my !== fp.token) return; $('#fpSaved').textContent = String(e.message || e); return fin([{ s: 'fail', t: 'Could not read the file', d: String(e.message || e) }], 'The presenter could not be read.'); }
       if (my !== fp.token) return;
     }
-    $('#fpSaved').textContent = src ? src.name + '. ' + src.note : (err || (drive.token ? (ranked.length ? 'Choose the presenter file for this unit above.' : 'No presenter or floor plan PDFs were found in the ' + PROJ.name + ' folder. Choose a file from this phone.') : 'Connect Drive to read the presenter, or choose a file from this phone.'));
+    $('#fpSaved').textContent = src ? src.name + '. ' + src.note : (err || (drive.token ? (ranked.length ? 'Choose the presenter file for this unit above.' : 'No presenter or floor plan PDFs were found in the ' + PROJ.name + ' folder. Choose a file from this phone.') : CONNECT + ' to read the presenter, or choose a file from this phone.'));
     if (!src) return fin([{ s: 'fail', t: 'Presenter PDF needed', d: 'Choose the file that has this unit\'s floor plan.' }], 'The floor plan appears here once a PDF is chosen.');
     paper.innerHTML = '<div class="busy">Searching for this unit\'s areas...</div>';
     try {
@@ -2625,7 +2782,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const u = String(state.unit || '').trim();
     const keys = pl && pl.gen ? genResolve(pl.gen.master, u) : [];
     if (keys.length !== 1) { paper.innerHTML = ''; return annSet([{ s: 'fail', t: !u ? 'Enter a unit number' : !pl ? 'Choose a pricelist revision' : 'Unit not found in this revision', d: 'The annexure is picked by the wing in the unit number.' }]); }
-    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; return annSet([{ s: 'fail', t: 'Connect Drive first', d: 'Tap Connect Drive at the top. The annexure is read from your Drive every time.' }]); }
+    if (!drive.token || Date.now() > drive.exp) { paper.innerHTML = ''; return annSet([{ s: 'fail', t: CONNECT + ' first', d: 'Tap ' + CONNECT + ' at the top. The annexure is read from your Drive every time.' }]); }
     const row = pl.gen.master.units[keys[0]];
     const d = decodeUnit(u), w = d ? d.wing : null;
     try {
@@ -2669,6 +2826,138 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   }
   $('#annPick').addEventListener('change', e => { annGen.pick = e.target.value; renderAnn(); });
 
+  /* ---------- admin tab (team mode, admins only) ---------- */
+  const PNAME = id => (PROJECTS.find(x => x.id === id) || { name: id }).name;
+  function fmtWhen(iso) {
+    const d = new Date(iso);
+    if (!isFinite(d)) return '';
+    let h = d.getHours(); const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
+    return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ', ' + h + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap;
+  }
+  function admMsg(t, bad) { const e = $('#admMsg'); e.textContent = t || ''; e.style.color = bad ? 'var(--bad)' : ''; }
+  let admUsersList = [];
+  function admLoad() {
+    if (!team.on || team.role !== 'admin') return;
+    if (!drive.token) { admMsg('Sign in to manage the team.', true); return; }
+    admMsg('');
+    admUsers(); admPresets(); admStats();
+  }
+  async function admUsers(list) {
+    try {
+      if (!list) { const j = await teamCall('users'); if (!j.ok) throw new Error(j.err); list = j.users; }
+    } catch (e) { admMsg(String(e.message || e), true); return; }
+    admUsersList = list;
+    const opt = (v, t) => '<option value="' + v + '">' + t + '</option>';
+    $('#admUsers').innerHTML = '<tr><th>Email</th><th>Role</th><th>Change</th></tr>' + list.map(u =>
+      '<tr><td style="word-break:break-all">' + esc(u.email) + (u.active ? '' : '<span class="chip">Paused</span>') +
+      '<br><small style="color:var(--mut)">' + (u.lastSeen ? 'Last opened ' + esc(fmtWhen(u.lastSeen)) : 'Not opened yet') + '</small></td>' +
+      '<td>' + (u.role === 'admin' ? 'Admin' : 'User') + '</td><td>' +
+      (u.super ? '<small>Owner</small>' : '<select data-email="' + esc(u.email) + '" aria-label="Change access for ' + esc(u.email) + '" style="min-height:36px;padding:4px 6px;font-size:13px">' +
+        opt('', 'Choose') + (u.role === 'admin' ? opt('user', 'Make user') : opt('admin', 'Make admin')) +
+        (u.active ? opt('pause', 'Pause access') : opt('resume', 'Resume access')) + opt('remove', 'Remove') + '</select>') +
+      '</td></tr>').join('');
+  }
+  $('#admUsers').addEventListener('change', async e => {
+    const sel = e.target, email = sel.dataset && sel.dataset.email, act = sel.value;
+    if (!email || !act) return;
+    const u = admUsersList.find(x => x.email === email) || { role: 'user', active: true };
+    if (act === 'remove' && !confirm('Remove access for ' + email + '?')) { sel.value = ''; return; }
+    sel.disabled = true;
+    try {
+      const j = act === 'remove' ? await teamCall('userDel', { email })
+        : await teamCall('userSet', { email, role: act === 'admin' ? 'admin' : act === 'user' ? 'user' : u.role, active: act === 'pause' ? false : act === 'resume' ? true : u.active });
+      if (!j.ok) throw new Error(j.err);
+      admMsg(act === 'remove' ? email + ' removed.' : 'Saved.');
+      admUsers(j.users);
+    } catch (err) { admMsg(String(err.message || err), true); sel.disabled = false; sel.value = ''; }
+  });
+  $('#admAdd').addEventListener('click', async () => {
+    const email = $('#admEmail').value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { admMsg('Enter a valid email.', true); return; }
+    $('#admAdd').disabled = true;
+    try {
+      const j = await teamCall('userSet', { email, role: $('#admRole').value, active: true });
+      if (!j.ok) throw new Error(j.err);
+      $('#admEmail').value = '';
+      admMsg(email + ' can now sign in.');
+      admUsers(j.users);
+    } catch (e) { admMsg(String(e.message || e), true); }
+    $('#admAdd').disabled = false;
+  });
+  function admPresets() {
+    const btn = $('#admPreset');
+    const already = !!pl && isPreset(pl.id);
+    btn.disabled = !pl || already;
+    btn.textContent = !pl ? 'Choose a revision above to set it for the team' : already ? 'The chosen revision is already a team revision' : 'Set ' + pl.title.replace(/^Sobha\s+/i, '') + ' as the team revision for ' + PROJ.name;
+    const rowsH = [];
+    Object.keys(team.presets).forEach(pid => (team.presets[pid] || []).forEach(p => rowsH.push(
+      '<tr><td><b>' + esc(PNAME(pid)) + '</b><br><small>' + esc(p.name) + '</small></td><td><button class="btn alt" data-pid="' + esc(pid) + '" data-id="' + esc(p.id) + '" style="min-height:36px;padding:0 10px;font-size:13px">Remove</button></td></tr>')));
+    $('#admPresets').innerHTML = rowsH.length ? rowsH.join('') : '<tr><td>No team revisions set yet. The team picks a revision themselves.</td></tr>';
+  }
+  $('#admPreset').addEventListener('click', async () => {
+    if (!pl) return;
+    const f = drive.files.find(x => x.id === pl.id);
+    $('#admPreset').disabled = true;
+    try {
+      const j = await teamCall('presetAdd', { project: PROJ.id, id: pl.id, name: f ? revShort(f) : pl.title });
+      if (!j.ok) throw new Error(j.err);
+      team.presets = j.presets; fillRevisions(); admMsg('Team revision saved for ' + PROJ.name + '.');
+    } catch (e) { admMsg(String(e.message || e), true); }
+    admPresets();
+  });
+  $('#admPresets').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-id]');
+    if (!b || !confirm('Remove this team revision?')) return;
+    b.disabled = true;
+    try {
+      const j = await teamCall('presetDel', { project: b.dataset.pid, id: b.dataset.id });
+      if (!j.ok) throw new Error(j.err);
+      team.presets = j.presets; fillRevisions();
+    } catch (err) { admMsg(String(err.message || err), true); }
+    admPresets();
+  });
+  async function admStats() {
+    const box = $('#admStats');
+    box.innerHTML = '<p class="note">Loading...</p>';
+    let st;
+    try { const j = await teamCall('stats', { days: Number($('#admDays').value) }); if (!j.ok) throw new Error(j.err); st = j.stats; }
+    catch (e) { box.innerHTML = '<p class="note" style="color:var(--bad)">' + esc(String(e.message || e)) + '</p>'; return; }
+    const bars = (list, fmtK) => {
+      if (!list.length) return '<p class="note">Nothing yet.</p>';
+      const max = list[0].n || 1;
+      return '<div class="bars">' + list.slice(0, 8).map(x => '<div><i style="width:' + Math.round(x.n / max * 100) + '%"></i><span>' + esc(fmtK ? fmtK(x.k) : x.k) + '</span><b>' + inGroup(String(x.n)) + '</b></div>').join('') + '</div>';
+    };
+    let h = '<div class="stats"><div><small>Searches</small><b>' + inGroup(String(st.searches)) + '</b></div><div><small>Downloads and shares</small><b>' + inGroup(String(st.downloads)) + '</b></div>' +
+      '<div><small>Active people</small><b>' + st.activeUsers + '</b></div><div><small>Period</small><b>' + st.days + ' days</b></div></div>';
+    if (st.perDay.length) {
+      const max = Math.max.apply(null, st.perDay.map(x => x.n));
+      h += '<h2>Searches per day</h2><div class="days" role="img" aria-label="Searches per day">' + st.perDay.map(x => '<i title="' + esc(x.k + ': ' + x.n) + '" style="height:' + Math.max(3, Math.round(x.n / max * 100)) + '%"></i>').join('') + '</div>' +
+        '<p class="note" style="display:flex;justify-content:space-between;margin-top:4px"><span>' + esc(st.perDay[0].k) + '</span><span>' + esc(st.perDay[st.perDay.length - 1].k) + '</span></p>';
+    }
+    h += '<h2>Most searched projects</h2>' + bars(st.projects);
+    h += '<h2>Most searched units</h2>' + bars(st.units);
+    h += '<h2>Who searched the most</h2>';
+    h += st.users.length ? '<div style="overflow-x:auto"><table><tbody><tr><th>Person</th><th>Searches</th><th>Downloads</th></tr>' + st.users.map(u =>
+      '<tr><td style="word-break:break-all">' + esc(u.email) + '<br><small style="color:var(--mut)">Last active ' + esc(fmtWhen(u.last)) + '</small></td><td>' + inGroup(String(u.searches)) + '</td><td>' + inGroup(String(u.downloads)) + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="note">Nothing yet.</p>';
+    h += '<h2>Pricelist revisions used</h2>' + bars(st.revisions, k => k.replace(' | ', ': ') || '-');
+    const what = { signin: 'signed in', search: 'searched', download: 'downloaded', share: 'shared', copy: 'copied the payment summary' };
+    h += '<h2>Recent activity</h2>' + (st.recent.length ? '<div style="overflow-x:auto"><table><tbody>' + st.recent.map(r =>
+      '<tr><td style="text-align:left"><small style="color:var(--mut)">' + esc(fmtWhen(r.t)) + '</small><br>' + esc(r.email) + ' ' + esc(what[r.type] || r.type) +
+      (r.type === 'search' || r.type === 'download' || r.type === 'share' ? ' <b>' + esc(r.project + (r.unit ? ' - ' + r.unit : '')) + '</b>' : '') + (r.detail && r.type !== 'copy' ? ' <small>(' + esc(r.detail) + ')</small>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="note">Nothing yet.</p>');
+    box.innerHTML = h;
+  }
+  $('#admDays').addEventListener('change', admStats);
+
+  /* team mode labels; the team server address can also be set from the setup box */
+  $('#teamApi').value = team.api;
+  $('#teamApi').addEventListener('change', e => { lsSet('teamApi', e.target.value.trim()); location.reload(); });
+  if (team.on) {
+    $('#btnConnect').textContent = 'Sign in';
+    setDrive('Not signed in', 'Sign in with the Google account your admin approved.');
+    $('#pricelist').innerHTML = '<option value="">Sign in to list revisions</option>';
+    if (TEAM_API) $('#setup').classList.add('hide');
+  }
+
   /* ---------- tabs and actions ---------- */
   let activeTab = 'sheet';
   const DOCS = {
@@ -2682,23 +2971,25 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#btnShare').disabled = !d || !d.ok();
     $('#btnBoth').disabled = !(DOCS.sheet.ok() && DOCS.fp.ok());
   }
-  const PANES = { sheet: ['#tabSheet', '#paneSheet'], fp: ['#tabFp', '#paneFp'], ann: ['#tabAnn', '#paneAnn'], emi: ['#tabEmi', '#paneEmi'] };
+  const PANES = { sheet: ['#tabSheet', '#paneSheet'], fp: ['#tabFp', '#paneFp'], ann: ['#tabAnn', '#paneAnn'], emi: ['#tabEmi', '#paneEmi'], adm: ['#tabAdm', '#paneAdm'] };
   function tab(which) {
     activeTab = which;
     Object.keys(PANES).forEach(k => {
       $(PANES[k][0]).setAttribute('aria-selected', k === which);
       $(PANES[k][1]).classList.toggle('hide', k !== which);
     });
-    $('#actions').classList.toggle('hide', which === 'emi');
+    $('#actions').classList.toggle('hide', which === 'emi' || which === 'adm');
     if (which === 'fp') fpRefresh();
     if (which === 'ann') renderAnn();
     if (which === 'emi') renderEmi();
+    if (which === 'adm') admLoad();
     updateActions();
   }
   Object.keys(PANES).forEach(k => $(PANES[k][0]).addEventListener('click', () => tab(k)));
-  $('#btnDownload').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) saveBlob(d.build()); });
-  $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) shareFiles([d.build()]); });
-  $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) shareFiles([DOCS.sheet.build(), DOCS.fp.build()]); });
+  const DOCNAME = { sheet: 'Cost sheet', fp: 'Floor plan', ann: 'Annexure' };
+  $('#btnDownload').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) { saveBlob(d.build()); logEv('download', { detail: DOCNAME[activeTab] }); } });
+  $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) { shareFiles([d.build()]); logEv('share', { detail: DOCNAME[activeTab] }); } });
+  $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) { shareFiles([DOCS.sheet.build(), DOCS.fp.build()]); logEv('share', { detail: 'Cost sheet + Floor plan' }); } });
 
   $('#project').innerHTML = PROJECTS.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
   $('#project').value = PROJ.id;
@@ -2706,6 +2997,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   fillFrom('');
   render();
   tab('sheet');
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
 </script>
 </body>

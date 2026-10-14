@@ -1,0 +1,47 @@
+plugins { id 'com.android.application' }
+
+/* The app is a Trusted Web Activity: it opens https://grihasales-cyber.github.io/unitfinder/ full screen in Chrome,
+   so every change pushed to the website reaches the team without a new APK. */
+def ks = System.getenv('UF_KEYSTORE')
+
+android {
+    namespace 'in.grihasales.unitfinder'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'in.grihasales.unitfinder'
+        minSdk 21
+        targetSdk 34
+        versionCode((System.getenv('UF_VERSION_CODE') ?: '1') as int)
+        versionName System.getenv('UF_VERSION_NAME') ?: '1.0'
+        manifestPlaceholders = [
+            hostName: 'grihasales-cyber.github.io',
+            defaultUrl: 'https://grihasales-cyber.github.io/unitfinder/',
+            launcherName: 'Unit Finder'
+        ]
+        resValue 'string', 'app_name', 'Unit Finder'
+    }
+    signingConfigs {
+        release {
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('UF_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('UF_KEY_ALIAS') ?: 'unitfinder'
+                keyPassword System.getenv('UF_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ks) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
