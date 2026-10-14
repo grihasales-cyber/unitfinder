@@ -34,6 +34,8 @@ The script reads Drive as the account that sets it up, so use the account that o
 
 ## B. Let everyone sign in (Google Cloud Console, the account that owns the OAuth client)
 
+0. **APIs & Services > Credentials**, open the OAuth 2.0 Client ID used by the app, and under **Authorized redirect URIs** add `https://grihasales-cyber.github.io/unitfinder/` (with the slash at the end). Press **Save**. Sign-in goes to Google's page and comes back to this address.
+
 The team only signs in to prove who they are, so the app now asks Google for just their email address.
 
 1. Open **console.cloud.google.com > APIs & Services > OAuth consent screen** (in newer consoles: **Google Auth Platform**).
@@ -63,7 +65,6 @@ Done. `https://grihasales-cyber.github.io/.well-known/assetlinks.json` is publis
 Only admins see the **Admin** tab. vrn1994vishnu@gmail.com and the account that set up the server are always admins.
 
 - **Team access:** type an email and press **Give access**. Use **Change** on a row to make someone an admin, pause their access, or remove them. Changes apply within about 5 minutes.
-- **Team pricelist revisions:** pick the project at the top of the app; the Admin tab lists all its revisions with tick boxes. Your team sees **only the ticked revisions** (if none is ticked, they see all). The ticked one covering the unit's wing opens automatically. For Neopolis, tick one per wing group.
 - **Sign out:** the *Sign out* link under your name at the top. The next sign-in asks which Google account to use.
 - **Usage:** searches, downloads and shares, active people, searches per day, most searched projects and units, who searched the most, the revisions used, and recent activity. Choose 7, 30, 90 or 365 days. The raw log is also in the **Log** sheet of *Unit Finder Admin*.
 

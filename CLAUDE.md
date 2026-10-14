@@ -23,10 +23,10 @@ Cost sheet, Floor plan, Annexure, Payments.
 
 ## Team version (backend/, android/, TEAM-SETUP.md)
 - Team mode is ON: `TEAM_API` in index.html is the live Apps Script `/exec` URL (deployed from griha.sales@gmail.com, sheet "Unit Finder Admin"). Opening the app with `?personal=1` falls back to personal mode (direct Drive with drive.readonly).
-- In team mode people sign in with GIS token client, scope `openid email` only. Every Drive call goes through `teamCall('drive', {path})` to `backend/Code.gs`, which runs as the folder owner (griha.sales@gmail.com), verifies the token's aud = our client ID, checks the email against the Users sheet, and only allows read-only paths inside the ROOTS folders.
-- Sheet "Unit Finder Admin": Users (email, role, active), Presets (team revision per project, several allowed for wing-wise Neopolis files), Log (signin/search/download/share/copy).
-- Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list, team revisions, usage stats.
-- Admin ticks revisions per project (Presets sheet). Non-admins see only the ticked revisions (all if none ticked; filtered in `loadRevisions`, client side). The ticked one covering the unit's wing is preselected (`applyPreset`). Sign out link revokes the token and clears state.
+- In team mode people sign in by full-page redirect to Google OAuth (implicit flow, `response_type=token`, scope `openid email`; redirect URI https://grihasales-cyber.github.io/unitfinder/ must be listed on the OAuth client). The token is kept in localStorage `teamAuth` until it expires (~1 h). Popups were dropped because they fail inside the Android app. Every Drive call goes through `teamCall('drive', {path})` to `backend/Code.gs`, which runs as the folder owner (griha.sales@gmail.com), verifies the token's aud = our client ID, checks the email against the Users sheet, and only allows read-only paths inside the ROOTS folders.
+- Sheet "Unit Finder Admin": Users (email, role, active), Log (signin/search/download/share/copy).
+- Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list and usage stats.
+- Team revision presets were removed at his request: everyone sees all revisions. The Presets sheet and presetAdd/presetDel in Code.gs are unused. Sign out link revokes the token and clears state.
 - Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json is published from the `grihasales-cyber/grihasales-cyber.github.io` repo (site root redirects to /unitfinder/).
 
 ## Projects and Drive root folder IDs
