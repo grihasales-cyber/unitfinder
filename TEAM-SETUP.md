@@ -63,7 +63,8 @@ Done. `https://grihasales-cyber.github.io/.well-known/assetlinks.json` is publis
 Only admins see the **Admin** tab. vrn1994vishnu@gmail.com and the account that set up the server are always admins.
 
 - **Team access:** type an email and press **Give access**. Use **Change** on a row to make someone an admin, pause their access, or remove them. Changes apply within about 5 minutes.
-- **Team pricelist revision:** pick the project and revision at the top of the app, then press **Set ... as the team revision**. The team's app opens on it automatically. People can still choose another revision. For Neopolis, where revisions are per wing group, add one for each group. The app picks the one that covers the unit's wing.
+- **Team pricelist revisions:** pick the project at the top of the app; the Admin tab lists all its revisions with tick boxes. Your team sees **only the ticked revisions** (if none is ticked, they see all). The ticked one covering the unit's wing opens automatically. For Neopolis, tick one per wing group.
+- **Sign out:** the *Sign out* link under your name at the top. The next sign-in asks which Google account to use.
 - **Usage:** searches, downloads and shares, active people, searches per day, most searched projects and units, who searched the most, the revisions used, and recent activity. Choose 7, 30, 90 or 365 days. The raw log is also in the **Log** sheet of *Unit Finder Admin*.
 
 A search is counted when a unit has loaded and stayed on screen for 2.5 seconds, so typing a number doesn't count every digit.

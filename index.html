@@ -58,6 +58,7 @@ summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:
 .note{font-size:13px;color:var(--mut);margin:8px 0 0}
 .banner{background:#FFF4DF;border:1px solid #E2B661;border-radius:4px;padding:10px 12px;font-size:14px;margin-top:12px}
 .hide{display:none}
+.linkbtn{font:inherit;font-size:14px;font-weight:600;color:var(--ink);background:none;border:0;padding:6px 0 0;min-height:32px;text-decoration:underline;cursor:pointer}
 .bars{display:grid;gap:6px;margin:6px 0 0}
 .bars div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font-size:13px;position:relative;padding:6px 8px;background:#fff;border:1px solid var(--line);border-radius:4px;overflow:hidden}
 .bars i{position:absolute;left:0;top:0;bottom:0;background:#DCE9E2}
@@ -96,7 +97,7 @@ canvas{display:block;width:100%;height:auto}
 <section>
   <div class="panel" style="margin-bottom:12px">
     <div class="row" style="grid-template-columns:1fr auto;align-items:center">
-      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p></div>
+      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p><button id="btnSignOut" class="linkbtn hide" type="button">Sign out</button></div>
       <button id="btnConnect" class="btn" style="padding:0 16px">Connect Drive</button>
     </div>
     <details id="setup">
@@ -235,10 +236,11 @@ canvas{display:block;width:100%;height:auto}
     <div style="overflow-x:auto;margin-top:10px"><table><tbody id="admUsers"></tbody></table></div>
   </div>
   <div class="panel" style="margin-top:12px">
-    <h2 style="margin-top:0">Team pricelist revision</h2>
-    <p class="note" style="margin-top:0">The team's app opens on this revision. They can still pick another one. For Neopolis, add one per wing group; the app picks the one that covers the unit's wing.</p>
-    <button id="admPreset" class="btn alt" style="width:100%;margin-top:10px" disabled>Set the chosen revision for the team</button>
-    <div style="overflow-x:auto;margin-top:10px"><table><tbody id="admPresets"></tbody></table></div>
+    <h2 style="margin-top:0">Team pricelist revisions</h2>
+    <p id="admRevHead" class="note" style="margin-top:0"></p>
+    <div id="admRevList"></div>
+    <h2>Ticked revisions in all projects</h2>
+    <div style="overflow-x:auto"><table><tbody id="admPresets"></tbody></table></div>
   </div>
   <div class="panel" style="margin-top:12px">
     <div class="row" style="grid-template-columns:1fr auto;align-items:end">
@@ -2230,7 +2232,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
         },
         error_callback: e => reject(new Error(e && e.type === 'popup_closed' ? 'Sign-in was closed.' : 'Sign-in failed: ' + ((e && (e.message || e.type)) || 'unknown')))
       });
-      tc.requestAccessToken({ prompt: '' });
+      tc.requestAccessToken({ prompt: team.on && !lsGet('teamEmail') ? 'select_account' : '' });
     });
   }
   async function dApi(path, opt) {
@@ -2311,9 +2313,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       await loadRevisions();
       setDrive(team.on ? 'Signed in as ' + team.email : 'Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
       $('#btnConnect').textContent = team.on ? 'Sign in again' : 'Reconnect';
+      $('#btnSignOut').classList.toggle('hide', !team.on);
       if (activeTab === 'adm') admLoad();
       fp.wing = null; if (activeTab === 'fp') fpRefresh();
-    } catch (e) { setDrive(team.on ? 'Not signed in' : 'Drive not connected', e.message); }
+    } catch (e) { setDrive(team.on ? 'Not signed in' : 'Drive not connected', e.message); $('#btnSignOut').classList.add('hide'); }
     $('#btnConnect').disabled = false;
   });
 
@@ -2636,7 +2639,16 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (drive.files.length) plStatus('');
     else plStatus('No pricelist files were found in the ' + PROJ.name + ' folder in Drive.', true);
   }
-  async function loadRevisions() { await (PROJ.legacy ? listRevisions() : listGenericRevisions()); applyPreset(); }
+  async function loadRevisions() {
+    await (PROJ.legacy ? listRevisions() : listGenericRevisions());
+    /* Team members see only the revisions the admin ticked for this project (all of them if none is ticked). */
+    if (team.on && team.role !== 'admin') {
+      const ok = (team.presets[PROJ.id] || []).map(p => p.id);
+      if (ok.length) { drive.files = drive.files.filter(f => ok.indexOf(f.id) >= 0); fillRevisions(false); }
+    }
+    applyPreset();
+    if (activeTab === 'adm') admPresets();
+  }
 
   function applyProjectUi() {
     $('#edit').classList.toggle('hide', !PROJ.legacy);
@@ -2898,29 +2910,34 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#admAdd').disabled = false;
   });
   function admPresets() {
-    const btn = $('#admPreset');
-    const already = !!pl && isPreset(pl.id);
-    btn.disabled = !pl || already;
-    btn.textContent = !pl ? 'Choose a revision above to set it for the team' : already ? 'The chosen revision is already a team revision' : 'Set ' + pl.title.replace(/^Sobha\s+/i, '') + ' as the team revision for ' + PROJ.name;
+    const files = drive.files, ticked = (team.presets[PROJ.id] || []).length;
+    $('#admRevHead').innerHTML = 'Your team sees only the ticked revisions of <b>' + esc(PROJ.name) + '</b>; the one covering the unit\'s wing opens first. ' +
+      (ticked ? '' : 'Nothing is ticked yet, so the team sees all ' + files.length + ' revisions. ') + 'Pick another project at the top to set its revisions.';
+    $('#admRevList').innerHTML = !drive.token ? '<p class="note">Sign in to see the revisions.</p>' : !files.length ? '<p class="note">No revisions found for ' + esc(PROJ.name) + '.</p>' :
+      files.map(f => '<label style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:4px;margin:6px 0 0;color:var(--ink);font-size:14px">' +
+        '<input type="checkbox" data-rev="' + esc(f.id) + '"' + (isPreset(f.id) ? ' checked' : '') + ' style="width:22px;height:22px;min-height:0;margin:0;flex:none"><span>' + esc(revShort(f)) + '</span></label>').join('');
     const rowsH = [];
     Object.keys(team.presets).forEach(pid => (team.presets[pid] || []).forEach(p => rowsH.push(
       '<tr><td><b>' + esc(PNAME(pid)) + '</b><br><small>' + esc(p.name) + '</small></td><td><button class="btn alt" data-pid="' + esc(pid) + '" data-id="' + esc(p.id) + '" style="min-height:36px;padding:0 10px;font-size:13px">Remove</button></td></tr>')));
-    $('#admPresets').innerHTML = rowsH.length ? rowsH.join('') : '<tr><td>No team revisions set yet. The team picks a revision themselves.</td></tr>';
+    $('#admPresets').innerHTML = rowsH.length ? rowsH.join('') : '<tr><td>No revisions ticked yet. The team sees every revision.</td></tr>';
   }
-  $('#admPreset').addEventListener('click', async () => {
-    if (!pl) return;
-    const f = drive.files.find(x => x.id === pl.id);
-    $('#admPreset').disabled = true;
+  $('#admRevList').addEventListener('change', async e => {
+    const cb = e.target;
+    if (!cb || !cb.dataset || !cb.dataset.rev) return;
+    const f = drive.files.find(x => x.id === cb.dataset.rev);
+    cb.disabled = true;
     try {
-      const j = await teamCall('presetAdd', { project: PROJ.id, id: pl.id, name: f ? revShort(f) : pl.title });
+      const j = cb.checked ? await teamCall('presetAdd', { project: PROJ.id, id: f.id, name: revShort(f) })
+        : await teamCall('presetDel', { project: PROJ.id, id: f.id });
       if (!j.ok) throw new Error(j.err);
-      team.presets = j.presets; fillRevisions(); admMsg('Team revision saved for ' + PROJ.name + '.');
-    } catch (e) { admMsg(String(e.message || e), true); }
+      team.presets = j.presets; fillRevisions();
+      admMsg((cb.checked ? 'Shown to the team: ' : 'Hidden from the team: ') + revShort(f) + '.');
+    } catch (err) { admMsg(String(err.message || err), true); }
     admPresets();
   });
   $('#admPresets').addEventListener('click', async e => {
     const b = e.target.closest('button[data-id]');
-    if (!b || !confirm('Remove this team revision?')) return;
+    if (!b || !confirm('Remove this revision from the team list?')) return;
     b.disabled = true;
     try {
       const j = await teamCall('presetDel', { project: b.dataset.pid, id: b.dataset.id });
@@ -2960,6 +2977,29 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     box.innerHTML = h;
   }
   $('#admDays').addEventListener('change', admStats);
+
+  /* sign out: forget the Google sign-in and everything loaded for this person */
+  $('#btnSignOut').addEventListener('click', () => {
+    logFlush();
+    const tok = drive.token;
+    try { if (tok && window.google && google.accounts.oauth2.revoke) google.accounts.oauth2.revoke(tok, () => {}); } catch (e) {}
+    drive.token = null; drive.exp = 0; drive.files = [];
+    team.email = ''; team.role = ''; team.presets = {};
+    lsSet('teamEmail', '');
+    pl = null; revAll = false; revManual = false; lastSearch = '';
+    Object.keys(projCache).forEach(k => delete projCache[k]);
+    annDrive.files = null; annGen.pick = ''; fp.wing = null; pay.key = '';
+    $('#tabAdm').classList.add('hide');
+    document.querySelector('.tabs').style.setProperty('--tabn', 4);
+    document.querySelector('.tabs').style.setProperty('--tabf', '14px');
+    if (activeTab === 'adm') tab('sheet');
+    $('#pricelist').innerHTML = '<option value="">Sign in to list revisions</option>';
+    $('#unit').value = ''; state.unit = ''; plStatus('');
+    fillFrom(''); render();
+    $('#btnConnect').textContent = 'Sign in';
+    $('#btnSignOut').classList.add('hide');
+    setDrive('Signed out', 'Sign in with the Google account your admin approved.');
+  });
 
   /* team mode labels; the team server address can also be set from the setup box */
   $('#teamApi').value = team.api;

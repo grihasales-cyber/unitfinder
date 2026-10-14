@@ -26,7 +26,7 @@ Cost sheet, Floor plan, Annexure, Payments.
 - In team mode people sign in with GIS token client, scope `openid email` only. Every Drive call goes through `teamCall('drive', {path})` to `backend/Code.gs`, which runs as the folder owner (griha.sales@gmail.com), verifies the token's aud = our client ID, checks the email against the Users sheet, and only allows read-only paths inside the ROOTS folders.
 - Sheet "Unit Finder Admin": Users (email, role, active), Presets (team revision per project, several allowed for wing-wise Neopolis files), Log (signin/search/download/share/copy).
 - Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list, team revisions, usage stats.
-- Team revision is preselected (`applyPreset`) but people can change it (`revManual`).
+- Admin ticks revisions per project (Presets sheet). Non-admins see only the ticked revisions (all if none ticked; filtered in `loadRevisions`, client side). The ticked one covering the unit's wing is preselected (`applyPreset`). Sign out link revokes the token and clears state.
 - Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json is published from the `grihasales-cyber/grihasales-cyber.github.io` repo (site root redirects to /unitfinder/).
 
 ## Projects and Drive root folder IDs
