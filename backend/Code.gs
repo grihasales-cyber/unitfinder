@@ -86,13 +86,18 @@ function verify(tok) {
   const key = 'tok:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, tok));
   const hit = cache.get(key);
   if (hit) return JSON.parse(hit);
-  const r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(tok), { muteHttpExceptions: true });
+  /* "Sign in with Google" gives an ID token (three dot-separated parts); older sign-in gave an access token. */
+  const idt = /^[\w-]+\.[\w-]+\.[\w-]+$/.test(tok);
+  const r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?' + (idt ? 'id_token=' : 'access_token=') + encodeURIComponent(tok), { muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) throw new Error('signin');
   const t = JSON.parse(r.getContentText());
   if (t.aud !== CLIENT_ID && t.azp !== CLIENT_ID) throw new Error('signin');
+  if (idt && !/^(https:\/\/)?accounts\.google\.com$/.test(String(t.iss))) throw new Error('signin');
   if (!t.email || String(t.email_verified) !== 'true') throw new Error('signin');
   const who = { email: String(t.email).toLowerCase(), name: '' };
-  const ttl = Math.min(3000, Math.max(30, Number(t.expires_in) - 30));
+  const left = idt ? Number(t.exp) - Date.now() / 1000 : Number(t.expires_in);
+  if (!(left > 0)) throw new Error('signin');
+  const ttl = Math.min(3000, Math.max(30, Math.floor(left) - 30));
   cache.put(key, JSON.stringify(who), ttl);
   return who;
 }

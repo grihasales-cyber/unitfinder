@@ -97,8 +97,8 @@ canvas{display:block;width:100%;height:auto}
 <section>
   <div class="panel" style="margin-bottom:12px">
     <div class="row" style="grid-template-columns:1fr auto;align-items:center">
-      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p><button id="btnSignOut" class="linkbtn hide" type="button">Sign out</button></div>
-      <button id="btnConnect" class="btn" style="padding:0 16px">Connect Drive</button>
+      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p><button id="btnSignOut" class="linkbtn hide" type="button">Sign out</button><button id="btnAltSignIn" class="linkbtn hide" type="button" style="font-weight:400;font-size:13px">Trouble signing in? Use Google's page instead</button></div>
+      <div><button id="btnConnect" class="btn" style="padding:0 16px">Connect Drive</button><div id="gsiBtn" class="hide" style="min-height:44px"></div></div>
     </div>
     <details id="setup">
       <summary>Google sign-in setup</summary>
@@ -2122,7 +2122,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
           throw new Error('Could not reach the team server. Check your connection.');
         }
         if (!j.ok && /too many|simultaneous|try again|timed out/i.test(j.err || '') && i < 2) { await pause(1200 * (i + 1)); continue; }
-        if (!j.ok && j.err === 'signin') { drive.token = null; lsSet(AUTH_KEY, ''); throw new Error('Sign-in expired. Tap Sign in.'); }
+        if (!j.ok && j.err === 'signin') { drive.token = null; lsSet(AUTH_KEY, ''); teamUi(false); throw new Error('Sign-in expired. Sign in again.'); }
         if (!j.ok && j.err === 'noaccess' && act !== 'me') { drive.token = null; throw new Error('Your access to the app has been removed. Ask your admin.'); }
         return j;
       }
@@ -2275,7 +2275,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     await loadRevisions();
     setDrive(team.on ? 'Signed in as ' + team.email : 'Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
     $('#btnConnect').textContent = team.on ? 'Sign in again' : 'Reconnect';
-    $('#btnSignOut').classList.toggle('hide', !team.on);
+    if (team.on) teamUi(true);
     if (activeTab === 'adm') admLoad();
     fp.wing = null; if (activeTab === 'fp') fpRefresh();
   }
@@ -2907,7 +2907,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   $('#btnSignOut').addEventListener('click', () => {
     logFlush();
     const tok = drive.token;
-    try { if (tok) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(tok), { method: 'POST', mode: 'no-cors' }).catch(() => {}); } catch (e) {}
+    /* stop Google from signing this account back in by itself */
+    gsiInit().then(() => google.accounts.id.disableAutoSelect()).catch(() => {});
     drive.token = null; drive.exp = 0; drive.files = [];
     team.email = ''; team.role = ''; team.presets = {};
     lsSet('teamEmail', ''); lsSet(AUTH_KEY, '');
@@ -2921,8 +2922,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#pricelist').innerHTML = '<option value="">Sign in to list revisions</option>';
     $('#unit').value = ''; state.unit = ''; plStatus('');
     fillFrom(''); render();
-    $('#btnConnect').textContent = 'Sign in';
-    $('#btnSignOut').classList.add('hide');
+    teamUi(false);
     setDrive('Signed out', 'Sign in with the Google account your admin approved.');
   });
 
@@ -2940,23 +2940,68 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const q = new URLSearchParams({ client_id: cid, redirect_uri: location.origin + location.pathname.replace(/index\.html$/, ''), response_type: 'token', scope: 'openid email', state: st, prompt: 'select_account' });
     location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + q.toString());
   }
+  /* "Sign in with Google": Chrome shows the phone's Google accounts in its own picker (FedCM), with no
+     pop-up window and no web page, so it works inside the installed app. Google gives an ID token. */
+  let gsiReady = null;
+  function gsiInit() {
+    if (gsiReady) return gsiReady;
+    gsiReady = loadGis().then(() => {
+      google.accounts.id.initialize({
+        client_id: $('#clientId').value.trim(),
+        callback: r => teamCredential(r && r.credential),
+        auto_select: true, cancel_on_tap_outside: false, context: 'signin', itp_support: true,
+        use_fedcm_for_prompt: true, use_fedcm_for_button: true
+      });
+      google.accounts.id.renderButton($('#gsiBtn'), { type: 'standard', theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', logo_alignment: 'left' });
+    }).catch(e => { gsiReady = null; setDrive('Not signed in', e.message); throw e; });
+    return gsiReady;
+  }
+  function jwtPayload(t) {
+    try { return JSON.parse(decodeURIComponent(escape(atob(String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { return null; }
+  }
+  async function teamCredential(cred) {
+    const p = cred && jwtPayload(cred);
+    if (!p || !p.exp) { setDrive('Not signed in', 'Google sign-in did not finish. Try again.'); return; }
+    const exp = p.exp * 1000 - 60000;
+    lsSet(AUTH_KEY, JSON.stringify({ t: cred, exp }));
+    drive.token = cred; drive.exp = exp;
+    setDrive('Signing in...', '');
+    $('#gsiBtn').classList.add('hide');
+    try { await afterConnect(); }
+    catch (e) { setDrive('Not signed in', e.message); teamUi(false); if (!drive.token) lsSet(AUTH_KEY, ''); }
+  }
+  /* signed in: Sign out link; signed out: the Google button (and the page-based fallback link) */
+  function teamUi(signedIn) {
+    if (!team.on) return;
+    $('#btnConnect').classList.add('hide');
+    $('#btnSignOut').classList.toggle('hide', !signedIn);
+    $('#btnAltSignIn').classList.toggle('hide', signedIn);
+    $('#gsiBtn').classList.toggle('hide', signedIn);
+    if (!signedIn) gsiInit().catch(() => {});
+  }
+  $('#btnAltSignIn').addEventListener('click', () => { setDrive('Opening Google sign-in...', ''); teamRedirectSignIn($('#clientId').value.trim()); });
   async function teamResume() {
     const h = location.hash.replace(/^#/, '');
     if (/(^|&)(access_token|error)=/.test(h)) {
       const p = new URLSearchParams(h);
       history.replaceState(null, '', location.pathname + location.search);
       const st = lsGet('teamAuthState'); lsSet('teamAuthState', '');
-      if (!st || p.get('state') !== st) { setDrive('Not signed in', 'Sign-in could not be confirmed. Tap Sign in again.'); return; }
-      if (p.get('error')) { setDrive('Not signed in', p.get('error') === 'access_denied' ? 'Sign-in was cancelled. Tap Sign in to try again.' : 'Google sign-in failed (' + p.get('error') + '). Tap Sign in to try again.'); return; }
+      if (!st || p.get('state') !== st) { teamUi(false); setDrive('Not signed in', 'Sign-in could not be confirmed. Sign in again.'); return; }
+      if (p.get('error')) { teamUi(false); setDrive('Not signed in', p.get('error') === 'access_denied' ? 'Sign-in was cancelled. Sign in to try again.' : 'Google sign-in failed (' + p.get('error') + '). Sign in to try again.'); return; }
       lsSet(AUTH_KEY, JSON.stringify({ t: p.get('access_token'), exp: Date.now() + (Number(p.get('expires_in') || 3600) - 60) * 1000 }));
     }
     let a = null;
     try { a = JSON.parse(lsGet(AUTH_KEY) || 'null'); } catch (e) {}
-    if (!a || !a.t || Date.now() > a.exp) return;
+    if (!a || !a.t || Date.now() > a.exp) {
+      teamUi(false);
+      /* someone signed in on this phone before: let Google sign them back in quietly */
+      if (lsGet('teamEmail')) gsiInit().then(() => google.accounts.id.prompt()).catch(() => {});
+      return;
+    }
     drive.token = a.t; drive.exp = a.exp;
     setDrive('Signing in...', '');
     try { await afterConnect(); }
-    catch (e) { setDrive('Not signed in', e.message); $('#btnSignOut').classList.add('hide'); if (!drive.token) lsSet(AUTH_KEY, ''); }
+    catch (e) { setDrive('Not signed in', e.message); teamUi(false); if (!drive.token) lsSet(AUTH_KEY, ''); }
   }
   if (team.on) {
     $('#btnConnect').textContent = 'Sign in';
