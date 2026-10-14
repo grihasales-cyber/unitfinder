@@ -21,6 +21,14 @@ Cost sheet, Floor plan, Annexure, Payments.
 - Stages are matched to pricelist milestones by words (the shorter name's words must all appear in the other), so "Ground Floor" and "Sixth Floor" never get mixed up.
 - All numbers use Indian grouping (1,00,000) everywhere (`fmt`, `fmt2` -> `inGroup`).
 
+## Team version (backend/, android/, TEAM-SETUP.md)
+- Team mode turns on when `TEAM_API` in index.html (or `localStorage.teamApi`) is an Apps Script `/exec` URL. Empty = personal mode, unchanged (direct Drive with drive.readonly).
+- In team mode people sign in with GIS token client, scope `openid email` only. Every Drive call goes through `teamCall('drive', {path})` to `backend/Code.gs`, which runs as the folder owner (griha.sales@gmail.com), verifies the token's aud = our client ID, checks the email against the Users sheet, and only allows read-only paths inside the ROOTS folders.
+- Sheet "Unit Finder Admin": Users (email, role, active), Presets (team revision per project, several allowed for wing-wise Neopolis files), Log (signin/search/download/share/copy).
+- Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list, team revisions, usage stats.
+- Team revision is preselected (`applyPreset`) but people can change it (`revManual`).
+- Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json needs a `grihasales-cyber.github.io` repo to hide the URL bar.
+
 ## Projects and Drive root folder IDs
 Neopolis (legacy path) 18frM9pjqJZJ9Y7G3IaaVMnlfHS_IWhdZ
 One World 1GeY7LEQpEuky-nuVoEh29AoL1m0E550h
