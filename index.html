@@ -1862,8 +1862,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const d0 = bkDate(iso, 0), d30 = bkDate(iso, 30);
     const unitKey = (PROJ.legacy ? 'neo' : PROJ.id) + '|' + (m.key || String(state.unit).trim());
     const key = unitKey + '|' + (drive.token ? 1 : 0) + '|' + (pl && pl.id || '');
-    if (activeTab === 'emi' && key !== pay.key) {
-      pay.key = key; pay.lsKey = 'pay:' + unitKey; pay.stages = null; pay.state = 'loading';
+    /* also re-read when the Annexure tab has since loaded a different file (e.g. one picked by hand) */
+    const annNew = pay.state !== 'loading' && annDrive.file && (!pay.file || pay.file.id !== annDrive.file.id);
+    if (activeTab === 'emi' && (key !== pay.key || annNew)) {
+      pay.key = key; pay.lsKey = 'pay:' + unitKey; pay.stages = null; pay.file = null; pay.state = 'loading';
       try { pay.ticks = JSON.parse(lsGet(pay.lsKey) || '{}') || {}; } catch (e) { pay.ticks = {}; }
       payLoad(key);
     }
@@ -1943,7 +1945,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     try {
       await renderAnn();
       if (my !== pay.token) return;
-      if (!annDrive.bytes) { pay.state = 'none'; pay.stages = null; }
+      if (!annDrive.bytes) { pay.state = 'none'; pay.stages = null; pay.file = null; }
       else {
         pay.file = annDrive.file;
         pay.stages = await payStages(annDrive.bytes);
