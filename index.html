@@ -1852,11 +1852,17 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const lines = [];
     for (let pg = 1; pg <= Math.min(doc.numPages, 3); pg++) {
       const tc = await (await doc.getPage(pg)).getTextContent();
-      const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({ s: i.str.trim(), x: i.transform[4], y: i.transform[5] }));
+      const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0, h: Math.abs(i.transform[3]) || i.height || 10 }));
       const rows = [];
       items.forEach(i => { const r = rows.find(q => Math.abs(q.y - i.y) < 3); if (r) r.it.push(i); else rows.push({ y: i.y, it: [i] }); });
       rows.sort((q, w) => w.y - q.y);
-      rows.forEach(r => { r.it.sort((q, w) => q.x - w.x); lines.push(r.it.map(i => i.s).join(' ').replace(/\s+/g, ' ')); });
+      /* Some PDF readers split a word into pieces ("Sla" + "b"); join pieces that touch without adding a space. */
+      rows.forEach(r => {
+        r.it.sort((q, w) => q.x - w.x);
+        let t = '', end = null;
+        r.it.forEach(i => { const gap = end == null ? 0 : i.x - end; t += (end != null && gap > i.h * 0.12 ? ' ' : '') + i.s; end = i.x + i.w; });
+        lines.push(t.replace(/\s+/g, ' ').trim());
+      });
     }
     const out = []; let prev = '';
     lines.forEach(line => {
@@ -1883,9 +1889,13 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     rest.forEach((x, i) => stages.forEach((st, j) => {
       const a = payTok(x.label), b = payTok(st.name);
       if (!a.length || !b.length) return;
-      const c = a.filter(w => b.indexOf(w) >= 0).length;
-      const sc = c / Math.min(a.length, b.length);
-      if (sc >= 1) cand.push({ i, j, sc, c });
+      /* Words are compared without spaces, so a split or joined word in the PDF text still matches.
+         All words of one name must appear in the other, so "Ground Floor" never matches "Sixth Floor". */
+      const ja = a.join(''), jb = b.join('');
+      const has = (w, words, joined) => w.length < 3 ? words.indexOf(w) >= 0 : joined.indexOf(w) >= 0;
+      const inA = b.filter(w => has(w, a, ja)).length, inB = a.filter(w => has(w, b, jb)).length;
+      if (inB < a.length && inA < b.length) return;
+      cand.push({ i, j, sc: 1, c: Math.max(inA === b.length ? inA : 0, inB === a.length ? inB : 0) });
     }));
     cand.sort((p, q) => q.sc - p.sc || q.c - p.c);
     const mi = {}, mj = {};
@@ -1968,6 +1978,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     });
     h += tr('Total value', fmt(m.D), true);
     h += '</tbody></table></div>';
+    if (pay.stages && pay.stages.length) h += '<details style="margin-top:10px"><summary>What the app read from the annexure</summary><div style="overflow-x:auto"><table><tbody>' +
+      pay.stages.map(st => '<tr><td style="text-align:left">' + esc(st.name) + '</td><td>' + (st.done ? 'Completed' : st.y != null ? esc(MONS[st.m].replace(/^./, c => c.toUpperCase()) + ' ' + st.y) : 'On demand') + '</td></tr>').join('') + '</tbody></table></div></details>';
     if (p.note) h += '<p class="note">' + esc(p.note) + '</p>';
     $('#payBody').innerHTML = h;
     const nm = (PROJ.legacy ? PRICELIST.projectName : PROJ.name) + ' - Unit ' + (m.key || String(state.unit).trim()) + (m.type ? ' (' + m.type + ')' : '');
