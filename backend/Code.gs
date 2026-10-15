@@ -114,11 +114,11 @@ function driveCall(path) {
     const m = q && q.match(new RegExp("^'(" + ID + ")' in parents and trashed=false( and mimeType\\s*(=|!=)\\s*'[\\w./+-]+')*$"));
     if (!m) throw new Error('Not allowed');
     folder = m[1];
-    if (!inRoots(folder)) throw new Error('Not allowed');
+    if (!inRoots(folder)) throw new Error('Not allowed' + (lastWhy ? ': ' + lastWhy : ''));
   } else if (one) {
     fileId = one[1];
     if (one[2].indexOf('/export?') === 0 && !/^\/export\?mimeType=application%2Fvnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$/.test(one[2])) throw new Error('Not allowed');
-    if (!inRoots(fileId)) throw new Error('Not allowed');
+    if (!inRoots(fileId)) throw new Error('Not allowed' + (lastWhy ? ': ' + lastWhy : ''));
   } else throw new Error('Not allowed');
 
   const bin = !!fileId && (/[?&]alt=media/.test(path) || path.indexOf('/export?') >= 0);
@@ -128,7 +128,7 @@ function driveCall(path) {
 
   const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/' + path, { headers: auth(), muteHttpExceptions: true });
   const code = r.getResponseCode();
-  if (code !== 200) return { ok: false, err: 'Drive error ' + code, status: code };
+  if (code !== 200) return { ok: false, err: 'Drive error ' + code + ': ' + driveMsg(r), status: code };
   if (bin) return { ok: true, b64: Utilities.base64Encode(r.getContent()) };
   const text = r.getContentText();
   const json = JSON.parse(text);
@@ -149,10 +149,17 @@ function param(qs, name) {
   }
   return null;
 }
+/* Google's own error text for a failed Drive call, e.g. a missing permission or Drive turned off. */
+function driveMsg(r) {
+  try { const e = JSON.parse(r.getContentText()).error; return String(e && (e.message || e.status) || '').slice(0, 300); }
+  catch (x) { return String(r.getContentText()).slice(0, 200); }
+}
+let lastWhy = '';
 function inRoots(id) {
   const cache = CacheService.getScriptCache();
   let cur = id;
   const seen = [];
+  lastWhy = '';
   for (let depth = 0; depth < 12 && cur; depth++) {
     if (ROOTS.indexOf(cur) >= 0) { mark(seen, '1'); return true; }
     const hit = cache.get('anc:' + cur);
@@ -160,11 +167,13 @@ function inRoots(id) {
     if (hit === '0') { mark(seen, '0'); return false; }
     seen.push(cur);
     const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + cur + '?fields=parents&supportsAllDrives=true', { headers: auth(), muteHttpExceptions: true });
-    if (r.getResponseCode() !== 200) break;
+    /* a failed lookup is not remembered, so the next request tries again */
+    if (r.getResponseCode() !== 200) { lastWhy = 'Drive ' + r.getResponseCode() + ': ' + driveMsg(r); return false; }
     const p = JSON.parse(r.getContentText()).parents;
     cur = p && p.length ? p[0] : null;
   }
   mark(seen, '0');
+  lastWhy = 'outside the project folders';
   return false;
 }
 function mark(ids, v) {

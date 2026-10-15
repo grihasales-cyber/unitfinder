@@ -2211,7 +2211,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (!drive.token || Date.now() > drive.exp) throw new Error('Drive session expired. Tap ' + CONNECT + '.');
     if (team.on) {
       const j = await teamCall('drive', { path });
-      if (!j.ok) throw new Error(j.err === 'Not allowed' || j.status === 403 || j.status === 404 ? 'This file is not available through the team app.' : (j.err || 'Drive error'));
+      if (!j.ok) throw new Error('The team server could not read this from Drive (' + (j.err || 'unknown error') + ').');
       if (opt && opt.bin) {
         const b = atob(j.b64), u = new Uint8Array(b.length);
         for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
