@@ -1991,6 +1991,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const restPc = uptoPct != null ? pctTxt(uptoPct) + ' less booking' : '';
     const amt = (v, pc) => fmt(v) + (pc ? '<br><small>' + esc(pc) + '</small>' : '');
     const pcTag = pc => pc ? ' (' + pc + ')' : '';
+    /* totals are shown as a share of the total value, like the booking */
+    const ofTotal = v => m.D > 0 ? pctTxt(v * 100 / m.D) + ' of total' : '';
     const L = 'style="text-align:left"';
     const tr = (a, b, bold) => '<tr><td ' + L + '>' + (bold ? '<b>' + a + '</b>' : a) + '</td><td>' + (bold ? '<b>' + b + '</b>' : b) + '</td></tr>';
     const head = t => '<tr><th colspan="2" ' + L + '>' + t + '</th></tr>';
@@ -2005,10 +2007,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', amt(p.remaining, restPc));
     overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), amt(r.x.amount, pcOf(r.x))); });
     soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', amt(r.x.amount, pcOf(r.x))); });
-    h += tr('Payable in the next 30 days', fmt(soonAmt), true);
+    h += tr('Payable in the next 30 days', amt(soonAmt, ofTotal(soonAmt)), true);
     h += head('3. Total');
-    h += tr('Total in 30 days (1 + 2)', fmt(total30), true);
-    h += tr('Balance after 30 days', fmt(balance));
+    h += tr('Total in 30 days (1 + 2)', amt(total30, ofTotal(total30)), true);
+    h += tr('Balance after 30 days', amt(balance, ofTotal(balance)));
     h += '</tbody></table></div>';
     /* stage-by-stage check against the annexure */
     h += '<h2 style="margin-top:16px">Stage check against the annexure</h2>';
@@ -2043,7 +2045,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     dl.push( 'NEXT PAYMENT (by ' + bkFmt(d30) + ')', 'Balance of ' + p.upto.map(x => x.short).join(' + ') + pcTag(restPc) + ': Rs. ' + fmt(p.remaining));
     overdue.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + (r.when ? ' (annexure ' + bkFmt(r.when) + ', demanded)' : ' (completed)') + ': Rs. ' + fmt(r.x.amount)));
     soon.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ' (annexure ' + bkFmt(r.when) + '): Rs. ' + fmt(r.x.amount)));
-    dl.push('Payable in the next 30 days: Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS: Rs. ' + fmt(total30), 'Balance after 30 days: Rs. ' + fmt(balance), '', 'LATER STAGES (annexure dates are tentative)');
+    dl.push('Payable in the next 30 days' + pcTag(ofTotal(soonAmt)) + ': Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS' + pcTag(ofTotal(total30)) + ': Rs. ' + fmt(total30), 'Balance after 30 days' + pcTag(ofTotal(balance)) + ': Rs. ' + fmt(balance), '', 'LATER STAGES (annexure dates are tentative)');
     rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
     bkText = dl.join('\n');
   }
