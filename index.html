@@ -2634,7 +2634,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     applyProjectUi();
     fillFrom(''); render();
     if (drive.token && Date.now() <= drive.exp) {
-      try { await loadRevisions(); } catch (err) { plStatus(String(err.message || err), true); }
+      try { await loadRevisions(); if (team.on && team.email && drive.token) setDrive('Signed in as ' + team.email, drive.files.length + ' pricelist files found for ' + PROJ.name + '.'); } catch (err) { plStatus(String(err.message || err), true); }
     }
   });
 
@@ -2972,7 +2972,12 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     setDrive('Signing in...', '');
     $('#gsiBtn').classList.add('hide');
     try { await afterConnect(); }
-    catch (e) { setDrive('Not signed in', e.message); teamUi(false); if (!drive.token) lsSet(AUTH_KEY, ''); }
+    catch (e) { teamAfterError(e); }
+  }
+  /* A Drive problem after a good sign-in keeps the person signed in; only a refused sign-in signs them out. */
+  function teamAfterError(e) {
+    if (drive.token && team.email) { teamUi(true); setDrive('Signed in as ' + team.email, e.message); return; }
+    setDrive('Not signed in', e.message); teamUi(false); lsSet(AUTH_KEY, '');
   }
   /* signed in: Sign out link; signed out: the Google button (and the page-based fallback link) */
   function teamUi(signedIn) {
@@ -3011,7 +3016,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     drive.token = a.t; drive.exp = a.exp;
     setDrive('Signing in...', '');
     try { await afterConnect(); }
-    catch (e) { setDrive('Not signed in', e.message); teamUi(false); if (!drive.token) lsSet(AUTH_KEY, ''); }
+    catch (e) { teamAfterError(e); }
   }
   if (team.on) {
     $('#btnConnect').textContent = 'Sign in';
