@@ -1470,7 +1470,8 @@ function genFormat(v, z, label) {
   return fixRupee(normText(v));
 }
 function genShort(label) {
-  let l = fixRupee(label).replace(/\s*in ₹\s*$/, '').replace(/,\s*$/, '');
+  /* "30% Commencement of Laying of ... in ₹" (Birdsong) -> "Commencement of Laying of ..." */
+  let l = fixRupee(label).replace(/\s*in ₹\s*$/, '').replace(/,\s*$/, '').replace(/^\d+(\.\d+)?\s*%\s*/, '');
   const w = l.match(/within\s+(\d+)\s+days/i);
   if (w) return 'Within ' + w[1] + ' days';
   if (/application/i.test(l)) return 'Application';
@@ -1478,7 +1479,7 @@ function genShort(label) {
   if (/final payment/i.test(l)) return 'Final payment';
   const c = l.match(/^(?:Payable )?on completion of (.*?)(?:\s+or\s+\d.*|\s+in all\b.*|\s+in the\b.*|\s+excl\b.*)?$/i);
   if (c) l = c[1];
-  return l.length > 30 ? l.slice(0, 28) + '...' : l;
+  return l.length > 60 ? l.slice(0, 58) + '...' : l;
 }
 
 /* Evaluates one unit on its template. Returns rows ready for the layout, plus the figures used for checks. */
@@ -1942,13 +1943,16 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const ms = m.ms || [], A = m.A;
     if (!ms.length) return null;
     if (ms.every(x => x.pct != null)) return ms.map(x => ({ p: x.pct, dep: x.dep }));
-    if (!(A > 0)) return null;
-    const raw = ms.map(x => (x.exact != null ? x.exact : x.amount) * 100 / A);
+    const amtOf = x => x.exact != null ? x.exact : x.amount;
+    /* schedules without deposits (Birdsong plots) are a share of the total value */
+    const onD = () => { const r = ms.map(x => amtOf(x) * 100 / m.D); return m.D > 0 && Math.abs(r.reduce((a, b) => a + b, 0) - 100) <= 0.05 ? r.map(p => ({ p })) : null; };
+    if (!(A > 0)) return onD();
+    const raw = ms.map(x => amtOf(x) * 100 / A);
     const sum = raw.reduce((a, b) => a + b, 0);
     if (Math.abs(sum - 100) <= 0.05) return raw.map(p => ({ p }));
     const B = (m.D || 0) - A, bp = B * 100 / A, fi = ms.findIndex(x => /final payment/i.test(x.label));
     if (fi >= 0 && B > 0 && Math.abs(sum - bp - 100) <= 0.05) return raw.map((p, i) => i === fi ? { p: p - bp, dep: true } : { p });
-    return null;
+    return onD();
   }
   const pctTxt = p => String(Math.round(p * 100) / 100) + '%';
   function renderEmi() {
@@ -2046,7 +2050,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     });
     h += tr('Total value', fmt(m.D), true);
     h += '</tbody></table></div>';
-    if (pcs) h += '<p class="note">Percentages follow the pricelist\'s payment schedule (sale value without deposits)' + (pcs.some(q => q.dep) ? '. The deposits are collected with the final payment' : '') + '. The booking is ' + pct + '% of the total value.</p>';
+    if (pcs) h += '<p class="note">Percentages follow the pricelist\'s payment schedule' + (m.A > 0 ? ' (sale value without deposits)' : '') + (pcs.some(q => q.dep) ? '. The deposits are collected with the final payment' : '') + '. The booking is ' + pct + '% of the total value.</p>';
     if (pay.stages && pay.stages.length) h += '<details style="margin-top:10px"><summary>What the app read from the annexure</summary><div style="overflow-x:auto"><table><tbody>' +
       pay.stages.map(st => '<tr><td style="text-align:left">' + esc(st.name) + '</td><td>' + (st.done ? 'Completed' : st.y != null ? esc(MONS[st.m].replace(/^./, c => c.toUpperCase()) + ' ' + st.y) : 'On demand') + '</td></tr>').join('') + '</tbody></table></div></details>';
     if (p.note) h += '<p class="note">' + esc(p.note) + '</p>';
@@ -2343,7 +2347,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (cached) return cached;
     throw new Error(CONNECT + ' to read this file.');
   }
-  const revShort = f => f.name.replace(/^Sobha\s+/i, '').replace(/\s+to S&M.*$/i, '').replace(/\.xlsx$/i, '');
+  const revShort = f => f.name.replace(/\.xls[xm]?$/i, '').replace(/_/g, ' ').replace(/^Sobha\s+/i, '').replace(/\s+to S&M.*$/i, '').trim();
   let revAll = false;
   function fillRevisions(all) {
     if (all !== undefined) revAll = all;
@@ -2700,7 +2704,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       await Promise.all(subs.map(sf => walk(sf.id, folder ? folder + ' / ' + sf.name : sf.name, depth + 1)));
     }
     await walk(p.root, '', 0);
-    const isX = f => /\.xlsx?$/i.test(f.name) || f.mimeType === 'application/vnd.ms-excel' || f.mimeType === 'application/vnd.google-apps.spreadsheet' || f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const isX = f => /\.xls[xm]?$/i.test(f.name) || f.mimeType === 'application/vnd.ms-excel' || f.mimeType === 'application/vnd.ms-excel.sheet.macroenabled.12' || f.mimeType === 'application/vnd.google-apps.spreadsheet' || f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const isPdf = f => f.mimeType === 'application/pdf' || /\.pdf$/i.test(f.name);
     const lock = f => /^~\$/.test(f.name) || /draft/i.test(f.name);
     let pricelists = files.filter(f => isX(f) && !lock(f) && /price\s*list/i.test(f.name));

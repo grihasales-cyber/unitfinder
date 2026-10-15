@@ -42,7 +42,7 @@ Galera 12yxieRtGRVjKF91CyDW-K43rohEVSoey
 Valley View 1YeNML6njaJkha1-W3ijjeS4MtDFsziHN
 Sacred Grove 1HHD0Kzth8aSEGwhZRthLPaAuxyGsTAFf
 Boulevard 15YGrB-hScN5BXgSEMkrEpQfSQHh53kCW
-Birdsong 1_k27MGWp9EcBJAcLJJnaC44gRqJJOb8E (no pricelist in Drive yet)
+Birdsong 1_k27MGWp9EcBJAcLJJnaC44gRqJJOb8E (plots; pricelist is an .xlsm in "Price Sheet")
 Crystal Meadows 15OMiNogda8hLCI6WdGjJJJaf_rPueD_i
 Neopolis annexure folder: 1T1hTsDPP7y1LIsR4iODwQ7MzojwdnPcW (one PDF per wing, e.g. "Sobha Neopolis Phase 3 - Wing 1-1.pdf")
 
@@ -50,7 +50,7 @@ Neopolis annexure folder: 1T1hTsDPP7y1LIsR4iODwQ7MzojwdnPcW (one PDF per wing, e
 - Unit number decoding (Sobha): `[Wing][Floor 2 digits][Door]`, e.g. 2132 = wing 2, floor 13, door 2. Ground floor = "GF".
 - Legacy Neopolis path: `parsePricelist` + `evaluate`. Kept unchanged.
 - Generic path for the other projects: a mini Excel formula evaluator runs each workbook's "Unit Pricelist" / "Plot wise Pricelist" template for the unit. The result is checked against the Master Pricelist total within Rs 1.
-- Drive discovery per project root (BFS 4 levels). Files are cached in IndexedDB by id + modifiedTime. Accepts .xlsx and .xls.
+- Drive discovery per project root (BFS 4 levels). Files are cached in IndexedDB by id + modifiedTime. Accepts .xlsx, .xlsm (Birdsong) and .xls.
 - Floor plan (all projects, all Neopolis wings): the presenter PDF is picked by wing number in its name (a file named for another project, e.g. the 560 MB Townpark "WING 2" in the Neopolis Presenter folder, is pushed down; files over 60 MB are refused). The page is found by `fpPickPage`: it scores pages for the unit's SBA + carpet (2 decimals), the plan code as a whole word (e.g. "A4", not "A14") and the unit number, and pushes down list pages (picklist, area statement: 4+ plan codes). Areas alone are not enough: in Neopolis up to 8 plans share the same areas and the picklist lists every unit. Tested against the pricelists for all 1,701 units in the 17 Neopolis presenters under 6 MB (wings 5 and 9 are 8 MB and were not tested). The old page maps for wings 4 and 10 (`PAGE_MAP`) are no longer used; they missed B2 and C2 in wing 10. Plots need a manual page number.
 - Team mode reads Drive files in 3 MB pieces (`teamDownload`, `range` in Code.gs); an older Code.gs without piece support sends the whole file and that still works.
 - Annexure: the PDF is matched by wing and page 1 is rendered.
@@ -66,5 +66,4 @@ Neopolis annexure folder: 1T1hTsDPP7y1LIsR4iODwQ7MzojwdnPcW (one PDF per wing, e
 - Add vrn1994vishnu@gmail.com as an OAuth test user if Google sign-in is blocked.
 - Budget search and unit comparison.
 - Plot floor plans.
-- Birdsong has no pricelist.
 - Townpark needs more testing.
