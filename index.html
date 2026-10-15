@@ -1955,6 +1955,13 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     return onD();
   }
   const pctTxt = p => String(Math.round(p * 100) / 100) + '%';
+  /* "2 months left", "1 year 3 months left": calendar months from this month to the stage's month */
+  function monthsLeft(from, to) {
+    const n = Math.max(1, (to.getFullYear() - from.getFullYear()) * 12 + to.getMonth() - from.getMonth());
+    const y = Math.floor(n / 12), mo = n % 12;
+    const part = (v, w) => v + ' ' + w + (v === 1 ? '' : 's');
+    return (y ? part(y, 'year') + (mo ? ' ' + part(mo, 'month') : '') : part(mo, 'month')) + ' left';
+  }
   function renderEmi() {
     const m = current && current.model;
     $('#emiEmpty').classList.toggle('hide', !!m);
@@ -2043,7 +2050,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (r.status === 'past') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ' (' + esc(bkFmt(r.when)) + '). Date has passed.<br><label style="display:flex;gap:8px;align-items:center;margin:6px 0 0;font-size:14px;color:inherit"><input type="checkbox" data-tick="' + esc(r.x.short) + '"' + (r.ticked ? ' checked' : '') + ' style="width:22px;height:22px;margin:0"> Already demanded, add to the next 30 days</label>';
       else if (r.status === 'done') sub = '<b>Completed</b> per the annexure. Demand is due, added to the next 30 days.';
       else if (r.status === 'soon') sub = '<b>Due by ' + esc(bkFmt(r.when)) + '</b>, within 30 days.';
-      else if (r.status === 'later') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ', after 30 days.';
+      else if (r.status === 'later') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ', <b>' + monthsLeft(d0, r.when) + '</b>.';
       else if (r.status === 'demand') sub = 'On demand. The annexure gives no fixed date.';
       else sub = pay.stages ? 'Not found in the annexure. On demand.' : 'Date not available.';
       h += tr('<b>' + esc(r.x.short) + '</b><br><small>' + sub + '</small>', amt(r.x.amount, pcOf(r.x)));
