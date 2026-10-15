@@ -97,9 +97,11 @@ canvas{display:block;width:100%;height:auto}
 <section>
   <div class="panel" style="margin-bottom:12px">
     <div class="row" style="grid-template-columns:1fr auto;align-items:center">
-      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p><button id="btnSignOut" class="linkbtn hide" type="button">Sign out</button><button id="btnAltSignIn" class="linkbtn hide" type="button" style="font-weight:400;font-size:13px">Trouble signing in? Use Google's page instead</button></div>
-      <div><button id="btnConnect" class="btn" style="padding:0 16px">Connect Drive</button><div id="gsiBtn" class="hide" style="min-height:44px"></div></div>
+      <div><b id="driveStatus">Google Drive not connected</b><p id="driveSub" class="note" style="margin:2px 0 0">Pricelists and presenters are read from your Drive each time.</p><button id="btnSignOut" class="linkbtn hide" type="button">Sign out</button></div>
+      <div><button id="btnConnect" class="btn" style="padding:0 16px">Connect Drive</button></div>
     </div>
+    <div id="gsiBtn" class="hide" style="min-height:44px;margin-top:10px"></div>
+    <button id="btnAltSignIn" class="linkbtn hide" type="button" style="font-weight:400;font-size:13px">Trouble signing in? Use Google's page instead</button>
     <details id="setup">
       <summary>Google sign-in setup</summary>
       <label for="clientId">OAuth client ID</label>
@@ -2109,7 +2111,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   const pause = ms => new Promise(r => setTimeout(r, ms));
   const AUTH_KEY = 'teamAuth';
   async function teamCall(act, data) {
-    while (team.busy >= 4) await new Promise(r => team.wait.push(r));
+    while (team.busy >= 3) await new Promise(r => team.wait.push(r));
     team.busy++;
     try {
       for (let i = 0; ; i++) {
@@ -2122,7 +2124,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
           throw new Error('Could not reach the team server. Check your connection.');
         }
         if (!j.ok && /too many|simultaneous|try again|timed out/i.test(j.err || '') && i < 2) { await pause(1200 * (i + 1)); continue; }
-        if (!j.ok && j.err === 'signin') { drive.token = null; lsSet(AUTH_KEY, ''); teamUi(false); throw new Error('Sign-in expired. Sign in again.'); }
+        /* the check with Google can fail for a moment when many requests arrive together: retry before giving up */
+        if (!j.ok && j.err === 'signin' && drive.token && Date.now() < drive.exp && i < 3) { await pause(1000 * (i + 1)); continue; }
+        if (!j.ok && j.err === 'signin') { drive.token = null; lsSet(AUTH_KEY, ''); teamUi(false); setDrive('Not signed in', 'Your sign-in expired. Sign in again.'); throw new Error('Sign-in expired. Sign in again.'); }
         if (!j.ok && j.err === 'noaccess' && act !== 'me') { drive.token = null; throw new Error('Your access to the app has been removed. Ask your admin.'); }
         return j;
       }
@@ -2973,6 +2977,12 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   /* signed in: Sign out link; signed out: the Google button (and the page-based fallback link) */
   function teamUi(signedIn) {
     if (!team.on) return;
+    if (!signedIn) {
+      $('#tabAdm').classList.add('hide');
+      document.querySelector('.tabs').style.setProperty('--tabn', 4);
+      document.querySelector('.tabs').style.setProperty('--tabf', '14px');
+      if (activeTab === 'adm') tab('sheet');
+    }
     $('#btnConnect').classList.add('hide');
     $('#btnSignOut').classList.toggle('hide', !signedIn);
     $('#btnAltSignIn').classList.toggle('hide', signedIn);
