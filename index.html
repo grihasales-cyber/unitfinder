@@ -2199,7 +2199,11 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
           if (i < 1) { await pause(800); continue; }
           throw new Error('Could not reach the team server. Check your connection.');
         }
-        if (!j.ok && /too many|simultaneous|try again|timed out/i.test(j.err || '') && i < 2) { await pause(1200 * (i + 1)); continue; }
+        if (!j || typeof j !== 'object') j = { ok: false, err: 'empty reply' };
+        /* Google sometimes answers with an empty or unrelated reply (e.g. the server's "alive" page):
+           a Drive answer must carry its data, or it is asked again */
+        if (j.ok && act === 'drive' && !j.json && !j.b64) j = { ok: false, err: 'incomplete reply' };
+        if (!j.ok && /too many|simultaneous|try again|timed out|incomplete reply|empty reply/i.test(j.err || '') && i < 2) { await pause(1200 * (i + 1)); continue; }
         /* the check with Google can fail for a moment when many requests arrive together: retry before giving up */
         if (!j.ok && j.err === 'signin' && drive.token && Date.now() < drive.exp && i < 3) { await pause(1000 * (i + 1)); continue; }
         if (!j.ok && j.err === 'signin') { drive.token = null; lsSet(AUTH_KEY, ''); teamUi(false); setDrive('Not signed in', 'Your sign-in expired. Sign in again.'); throw new Error('Sign-in expired. Sign in again.'); }
@@ -2287,7 +2291,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (!drive.token || Date.now() > drive.exp) throw new Error('Drive session expired. Tap ' + CONNECT + '.');
     if (team.on) {
       const j = await teamCall('drive', { path });
-      if (!j.ok) throw new Error('The team server could not read this from Drive (' + (j.err || 'unknown error') + ').');
+      if (!j.ok) throw new Error(/incomplete reply|empty reply/.test(j.err || '') ? 'The team server did not answer properly. Try again in a moment.' : 'The team server could not read this from Drive (' + (j.err || 'unknown error') + ').');
       if (opt && opt.bin) {
         const b = atob(j.b64), u = new Uint8Array(b.length);
         for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
@@ -2370,7 +2374,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     let tok = '', all = [];
     do {
       const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
-      all = all.concat(j.files || []); tok = j.nextPageToken || '';
+      all = all.concat((j && j.files) || []); tok = (j && j.nextPageToken) || '';
     } while (tok);
     drive.files = all.filter(f => /pricelist/i.test(f.name) && (/\.xlsx$/i.test(f.name) || f.mimeType === 'application/vnd.google-apps.spreadsheet'))
       .sort((a, b) => (revNumber(b.name) || 0) - (revNumber(a.name) || 0) || String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
@@ -2380,9 +2384,12 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   /* After a Google token is in hand: check access (team mode) and load this project's revisions. */
   async function afterConnect() {
-    if (team.on) await teamSignedIn();
     Object.keys(projCache).forEach(k => delete projCache[k]);
-    await loadRevisions();
+    /* the access check and the revision list are asked for together, which saves a round trip at start-up */
+    const revs = loadRevisions();
+    revs.catch(() => {});
+    if (team.on) await teamSignedIn();
+    await revs;
     setDrive(team.on ? 'Signed in as ' + team.email : 'Google Drive connected', drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
     $('#btnConnect').textContent = team.on ? 'Sign in again' : 'Reconnect';
     if (team.on) teamUi(true);
@@ -2406,6 +2413,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   $('#pricelist').addEventListener('change', async e => {
     const id = e.target.value;
     if (id === '__all') { fillRevisions(true); try { e.target.showPicker(); } catch (x) {} return; }
+    if (id === '__retry') { revRetry(); return; }
     pl = null; plStatus('');
     if (id) {
       const f = drive.files.find(x => x.id === id);
@@ -2575,7 +2583,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     let tok = '', all = [];
     do {
       const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
-      all = all.concat(j.files || []); tok = j.nextPageToken || '';
+      all = all.concat((j && j.files) || []); tok = (j && j.nextPageToken) || '';
     } while (tok);
     annDrive.files = all;
     return all;
@@ -2686,7 +2694,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     let tok = '', all = [];
     do {
       const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
-      all = all.concat(j.files || []); tok = j.nextPageToken || '';
+      all = all.concat((j && j.files) || []); tok = (j && j.nextPageToken) || '';
     } while (tok);
     return all;
   }
@@ -2722,7 +2730,30 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (drive.files.length) plStatus('');
     else plStatus('No pricelist files were found in the ' + PROJ.name + ' folder in Drive.', true);
   }
-  function loadRevisions() { return PROJ.legacy ? listRevisions() : listGenericRevisions(); }
+  /* Loads the revision list, trying once more on a failed reply. If it still fails, the list offers
+     "Tap to try again" instead of staying on "Looking for revisions...". */
+  async function loadRevisions() {
+    let err;
+    for (let i = 0; i < 2; i++) {
+      try { return await (PROJ.legacy ? listRevisions() : listGenericRevisions()); }
+      catch (e) {
+        err = e;
+        if (!drive.token || /sign|access/i.test(String(e.message))) break;
+        delete projCache[PROJ.id];
+        await pause(1500 * (i + 1));
+      }
+    }
+    $('#pricelist').innerHTML = '<option value="">Revisions could not be loaded</option><option value="__retry">Tap here to try again</option>';
+    throw err;
+  }
+  async function revRetry() {
+    $('#pricelist').innerHTML = '<option value="">Looking for revisions...</option>';
+    plStatus('');
+    try {
+      await loadRevisions();
+      if (team.on && team.email) setDrive('Signed in as ' + team.email, drive.files.length + ' pricelist files found for ' + PROJ.name + '.');
+    } catch (e) { plStatus(String(e.message || e), true); }
+  }
 
   function applyProjectUi() {
     $('#edit').classList.toggle('hide', !PROJ.legacy);
