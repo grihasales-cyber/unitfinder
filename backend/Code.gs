@@ -62,7 +62,7 @@ function handle(req) {
       touch(who.email);
       return { ok: true, email: who.email, name: who.name, role: user.role, presets: readPresets() };
     case 'drive':
-      return driveCall(String(req.path || ''));
+      return driveCall(String(req.path || ''), String(req.range || ''));
     case 'log':
       writeLog(who.email, req.ev);
       return { ok: true };
@@ -105,7 +105,7 @@ function verify(tok) {
 /* ---------- Drive, read only, inside ROOTS ---------- */
 function auth() { return { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }; }
 const ID = '[A-Za-z0-9_-]{10,}';
-function driveCall(path) {
+function driveCall(path, range) {
   const list = path.match(/^files\?(.*)$/);
   const one = path.match(new RegExp('^files/(' + ID + ')(\\?.*|/export\\?.*)$'));
   let folder = null, fileId = null;
@@ -126,10 +126,24 @@ function driveCall(path) {
   const ckey = bin ? null : 'd:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, path));
   if (ckey) { const hit = cache.get(ckey); if (hit) return { ok: true, json: JSON.parse(hit) }; }
 
-  const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/' + path, { headers: auth(), muteHttpExceptions: true });
+  /* large PDFs are read in pieces ("bytes=0-3145727"), so no single reply gets too big or slow */
+  const part = bin && /^bytes=\d+-\d+$/.test(range || '') && path.indexOf('/export?') < 0;
+  const headers = auth();
+  if (part) headers.Range = range;
+  const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/' + path, { headers: headers, muteHttpExceptions: true });
   const code = r.getResponseCode();
-  if (code !== 200) return { ok: false, err: 'Drive error ' + code + ': ' + driveMsg(r), status: code };
-  if (bin) return { ok: true, b64: Utilities.base64Encode(r.getContent()) };
+  if (code !== 200 && !(part && code === 206)) return { ok: false, err: 'Drive error ' + code + ': ' + driveMsg(r), status: code };
+  if (bin) {
+    const bytes = r.getContent();
+    const out = { ok: true, b64: Utilities.base64Encode(bytes) };
+    if (part) {
+      const cr = String(r.getHeaders()['Content-Range'] || r.getHeaders()['content-range'] || '');
+      const m = cr.match(/\/(\d+)$/);
+      out.total = m ? Number(m[1]) : bytes.length;
+      out.whole = code === 200;
+    }
+    return out;
+  }
   const text = r.getContentText();
   const json = JSON.parse(text);
   if (text.length < 90000) cache.put(ckey, text, 300);

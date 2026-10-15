@@ -1572,6 +1572,34 @@ function pageIndexFor(wing, plan, override) {
   return { idx: -1, source: 'none' };
 }
 
+/* Finds the floor plan page for a unit from the presenter's page texts.
+   Many plan types share the same areas (wing 9 has eight plans of 2481.18 / 1617.83 sq ft), and the picklist
+   and area statement pages list every unit and plan. So a page scores for showing the unit's areas, for
+   showing the unit's plan code (e.g. "A4") or the unit number, and loses for being a list of many plans. */
+function fpPickPage(raws, row, unit) {
+  const tok = s => new RegExp('(^|[^A-Za-z0-9])' + String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9])');
+  const isPlot = !isFinite(row.carpet);
+  const s2 = row.sba.toFixed(2), c2 = isPlot ? '' : row.carpet.toFixed(2);
+  const plan = String(row.plan || '').trim().toUpperCase();
+  const reP = plan ? tok(plan) : null;
+  const reU = unit && String(unit).length >= 3 ? tok(unit) : null;
+  const scored = raws.map((raw, i) => {
+    const t = String(raw || '').replace(/[,\s]/g, '');
+    const a = t.indexOf(s2) >= 0, b = !isPlot && t.indexOf(c2) >= 0;
+    const codes = {};
+    (String(raw || '').match(/(^|[^A-Za-z0-9])[A-Z]{1,2}\d{1,2}(?![A-Za-z0-9])/g) || []).forEach(m => { codes[m.replace(/^[^A-Za-z]/, '')] = 1; });
+    const list = Object.keys(codes).length >= 4 || /UNIT PICKLIST|AREA STATEMENT/.test(raw || '');
+    const p = !!(reP && reP.test(raw || '')), u = !!(reU && reU.test(raw || ''));
+    let sc = (a && b ? 6 : a ? 3 : b ? 1 : 0) + (p ? 8 : 0) + (u ? 4 : 0) - (list ? 30 : 0);
+    if (!a && !b) sc -= 5;
+    return { i, sc, area: a && b, one: a !== b, p, u, list };
+  }).filter(x => x.area || x.one);
+  if (!scored.length) return { idx: -1, others: [], exact: false };
+  const best = Math.max.apply(null, scored.map(x => x.sc));
+  const top = scored.filter(x => x.sc === best);
+  return { idx: top[0].i, others: top.slice(1).map(x => x.i), exact: top[0].area, plan: top[0].p, unit: top[0].u };
+}
+
 async function extractPage(PDFLib, bytes, idx) {
   const src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   const n = src.getPageCount();
@@ -1601,7 +1629,7 @@ function floorChecks(info) {
     checks.push({ s: 'fail', t: 'Plan ' + (info.plan || '?') + ' is not mapped for wing ' + info.wing, d: 'Type the page number below.' });
     return checks;
   }
-  checks.push({ s: 'ok', t: 'Page ' + (info.idx + 1) + ' selected', d: info.source === 'manual' ? 'Page number typed by you' : info.source === 'search' ? 'Found by matching this unit\'s areas inside the PDF' : 'Plan ' + String(info.plan).toUpperCase() + ' in the wing ' + info.wing + ' presenter' });
+  checks.push({ s: 'ok', t: 'Page ' + (info.idx + 1) + ' selected', d: info.source === 'manual' ? 'Page number typed by you' : info.source === 'search' ? 'Found by this unit\'s plan and areas inside the PDF' : 'Plan ' + String(info.plan).toUpperCase() + ' in the wing ' + info.wing + ' presenter' });
   if (info.text == null) return checks;
   const norm = info.text.replace(/[,\s]/g, '');
   const nums = norm.match(/\d{3,4}\.\d{2}/g) || [];
@@ -1611,6 +1639,12 @@ function floorChecks(info) {
   if (hasS && hasC) checks.push({ s: 'ok', t: 'Areas match the pricelist', d: 'Page shows SBA ' + info.sba + ' and carpet ' + info.carpet });
   else if (nums.length && !hasS) checks.push({ s: 'fail', t: 'Page areas differ from the pricelist', d: 'Page shows ' + Array.from(new Set(nums)).slice(0, 4).join(', ') + '; pricelist has SBA ' + info.sba + ', carpet ' + info.carpet + '. Probably the wrong page.' });
   else checks.push({ s: 'warn', t: 'Could not confirm the areas', d: 'Check SBA ' + info.sba + ' and carpet ' + info.carpet + ' on the preview.' });
+  const plan = String(info.plan || '').trim().toUpperCase();
+  if (plan) {
+    const reP = new RegExp('(^|[^A-Za-z0-9])' + plan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9])');
+    if (reP.test(info.text)) checks.push({ s: 'ok', t: 'Plan ' + plan + ' is named on the page', d: '' });
+    else checks.push({ s: 'warn', t: 'Plan ' + plan + ' is not named in the page text', d: 'Check the preview shows plan ' + plan + '.' });
+  }
   if (norm.indexOf(info.unit) >= 0) checks.push({ s: 'ok', t: 'Unit ' + info.unit + ' is listed on the page', d: '' });
   else checks.push({ s: 'warn', t: 'Unit ' + info.unit + ' not found in the page text', d: 'Not every presenter lists apartment numbers. Rely on the area match.' });
   return checks;
@@ -2225,7 +2259,37 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (!r.ok) throw new Error('Drive error ' + r.status);
     return opt && opt.bin ? r.arrayBuffer() : r.json();
   }
-  async function getDriveFile(id, meta) {
+  /* Team mode: a file goes through the team server in 3 MB pieces, read three at a time. A server that does
+     not know about pieces yet sends the whole file in the first reply, which is used as it is. */
+  const PIECE = 3 * 1024 * 1024;
+  const b64Bytes = b64 => { const b = atob(b64), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  async function teamDownload(path, onProg) {
+    const get = async (from, to) => {
+      const j = await teamCall('drive', { path, range: 'bytes=' + from + '-' + to });
+      if (!j.ok) throw new Error('The team server could not read this from Drive (' + (j.err || 'unknown error') + ').');
+      return j;
+    };
+    const first = await get(0, PIECE - 1);
+    const head = b64Bytes(first.b64);
+    if (!first.total || first.whole || first.total <= head.length) return head;
+    const total = first.total, out = new Uint8Array(total);
+    out.set(head, 0);
+    let done = head.length;
+    if (onProg) onProg(done, total);
+    const jobs = [];
+    for (let from = PIECE; from < total; from += PIECE) {
+      const to = Math.min(total, from + PIECE) - 1;
+      jobs.push(get(from, to).then(j => {
+        const u = b64Bytes(j.b64);
+        if (u.length !== to - from + 1) throw new Error('The team server sent part of this file incomplete. Try again.');
+        out.set(u, from); done += u.length;
+        if (onProg) onProg(done, total);
+      }));
+    }
+    await Promise.all(jobs);
+    return out;
+  }
+  async function getDriveFile(id, meta, onProg) {
     const key = 'file:' + id;
     const cached = await idb.get(key);
     if (drive.token && Date.now() <= drive.exp) {
@@ -2233,7 +2297,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (cached && cached.modifiedTime === m.modifiedTime) return cached;
       const isSheet = m.mimeType === 'application/vnd.google-apps.spreadsheet';
       const path = isSheet ? 'files/' + id + '/export?mimeType=' + encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') : 'files/' + id + '?alt=media&supportsAllDrives=true';
-      const buf = await dApi(path, { bin: true });
+      const buf = team.on && !isSheet ? await teamDownload(path, onProg) : await dApi(path, { bin: true });
       const rec = { name: m.name, modifiedTime: m.modifiedTime, bytes: new Uint8Array(buf) };
       idb.put(key, rec);
       return rec;
@@ -2347,7 +2411,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   async function fpRefresh() {
     const my = ++fp.token;
-    if (!PROJ.legacy || (fpWing() != null && !DRIVE.presenters[fpWing()])) return fpRefreshGeneric(my);
+    /* every project, Neopolis included, finds the page by the unit's plan and areas (checked against all
+       Neopolis presenters); the old fixed page maps missed plans such as B2 and C2 in wing 10 */
+    if (!PROJ.legacy || fpWing() != null) return fpRefreshGeneric(my);
     $('#fpDrive').classList.add('hide');
     const d = decodeUnit(state.unit);
     const w = d ? d.wing : null;
@@ -2640,6 +2706,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
 
   /* ---------- floor plan, any project: find the page by the unit's areas ---------- */
   fp.texts = {}; fp.pick = '';
+  const projWord = p => new RegExp(p.name.replace(/\s+/g, '[\\s_\\-]*'), 'i');
   function rankFiles(list, wing, key, annex) {
     const reW = wing != null ? new RegExp('wing[\\s_\\-]*0*' + wing + '(?!\\d)', 'i') : null;
     const reN = wing != null ? new RegExp('(^|[^\\d])0*' + wing + '(?!\\d)') : null;
@@ -2653,6 +2720,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (/presenter/i.test(hay)) sc += 2;
       if (/floor\s*plan|layout|unit\s*plan/i.test(hay)) sc += 2;
       if (!annex && /brochure|master\s*plan|amenit|rera|payment|price|cost/i.test(hay)) sc -= 3;
+      /* a file named for this project wins over one named for another (a Townpark "Wing 2" in the Neopolis folder) */
+      if (projWord(PROJ).test(f.name)) sc += 1;
+      else if (PROJECTS.some(p => p !== PROJ && projWord(p).test(f.name))) sc -= 6;
       return { f, sc };
     }).sort((a, b) => b.sc - a.sc || String(b.f.modifiedTime).localeCompare(String(a.f.modifiedTime)));
   }
@@ -2664,7 +2734,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (my !== fp.token) return null;
       const pg = await doc.getPage(i);
       const tc = await pg.getTextContent();
-      out.push(tc.items.map(x => x.str).join(' ').replace(/[,\s]/g, ''));
+      out.push(tc.items.map(x => x.str).join(' '));
       if (i % 6 === 0) $('#fpPaper').innerHTML = '<div class="busy">Searching page ' + i + ' of ' + doc.numPages + ' for this unit\'s areas...</div>';
     }
     fp.texts[cacheKey] = out;
@@ -2689,6 +2759,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     }
     const d = decodeUnit(u);
     const wing = d ? d.wing : null;
+    fp.checks = [{ s: 'warn', t: 'Finding the floor plan...', d: 'Plan ' + (row.plan || '?') + ', SBA ' + fmt2(row.sba) + (isFinite(row.carpet) ? ', carpet ' + fmt2(row.carpet) : '') }];
+    fp.page = null; fp.ready = false; fpDone();
+    paper.innerHTML = '<div class="busy">Looking for the presenter PDF...</div>';
     /* source file */
     let cands = [], err = '';
     if (drive.token && Date.now() <= drive.exp) { try { cands = (await discover(PROJ)).plans; } catch (e) { err = String(e.message || e); } }
@@ -2705,9 +2778,15 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       src = { name: fp.override.name, bytes: fp.override.bytes, key: 'phone:' + fp.override.name + ':' + fp.override.bytes.length, note: 'Chosen from this phone.' };
     } else if (pickId) {
       const f = ranked.find(r => r.f.id === pickId).f;
-      $('#fpSaved').textContent = 'Reading ' + f.name + '...';
+      const mb = Number(f.size) / 1048576;
+      if (mb > 60) {
+        $('#fpSaved').textContent = f.name + ' is ' + Math.round(mb) + ' MB, too large to read on a phone.';
+        return fin([{ s: 'fail', t: 'File too large', d: f.name + ' is ' + Math.round(mb) + ' MB. Choose another file above, or a smaller copy from this phone.' }], 'This file is too large to read here.');
+      }
+      $('#fpSaved').textContent = 'Reading ' + f.name + (mb >= 1 ? ' (' + mb.toFixed(1) + ' MB)' : '') + '...';
+      paper.innerHTML = '<div class="busy">Reading the presenter from Drive...</div>';
       try {
-        const rec = await getDriveFile(f.id, f);
+        const rec = await getDriveFile(f.id, f, (got, all) => { if (my === fp.token) paper.innerHTML = '<div class="busy">Reading the presenter from Drive: ' + Math.round(got * 100 / all) + '%</div>'; });
         src = { name: f.name, bytes: rec.bytes, key: f.id + ':' + f.modifiedTime, note: auto ? 'Picked by wing number from Drive.' : 'Read from Drive.' };
       } catch (e) { if (my !== fp.token) return; $('#fpSaved').textContent = String(e.message || e); return fin([{ s: 'fail', t: 'Could not read the file', d: String(e.message || e) }], 'The presenter could not be read.'); }
       if (my !== fp.token) return;
@@ -2720,22 +2799,13 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (my !== fp.token || !texts) return;
       const info = { loaded: true, wing: wing, plan: row.plan, unit: u, sba: fmt2(row.sba), carpet: fmt2(row.carpet), fileName: src.name, pages: texts.length };
       const isPlot = !isFinite(row.carpet);
-      const s2 = row.sba.toFixed(2), c2 = isPlot ? '' : row.carpet.toFixed(2);
       const typed = parseInt($('#fpPage').value, 10);
-      let idx = -1, hits = [];
+      let idx = -1, others = [];
       if (typed >= 1) { idx = typed - 1; info.source = 'manual'; }
-      else {
-        const both = [], one = [];
-        texts.forEach((t, i) => { if (isPlot) return; const a = t.indexOf(s2) >= 0, b = t.indexOf(c2) >= 0; if (a && b) both.push(i); else if (a) one.push(i); });
-        hits = both.length ? both : one;
-        info.exact = both.length > 0;
-        if (hits.length) {
-          const plan = String(row.plan || '').toUpperCase();
-          const tail = genTail(row.key);
-          const pref = hits.find(i => tail.length >= 3 && texts[i].indexOf(tail) >= 0) || (plan ? hits.find(i => texts[i].toUpperCase().indexOf(plan) >= 0) : undefined);
-          idx = pref != null ? pref : hits[0];
-        }
-        info.source = 'search';
+      else if (!isPlot) {
+        const pick = fpPickPage(texts, row, u);
+        idx = pick.idx; others = pick.others;
+        info.exact = pick.exact; info.source = 'search';
       }
       info.idx = idx;
       if (idx < 0) {
@@ -2749,7 +2819,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (my !== fp.token) return;
       info.text = text;
       const checks = isPlot ? [{ s: 'ok', t: 'Presenter PDF loaded', d: src.name + ', ' + texts.length + ' pages' }, { s: 'ok', t: 'Page ' + (idx + 1) + ' selected', d: 'Page number typed by you' }, { s: 'warn', t: 'Page is not matched by area', d: 'Check the preview shows plot ' + row.key + '.' }] : floorChecks(info);
-      if (hits.length > 1) checks.push({ s: 'warn', t: hits.length + ' pages show these areas', d: 'Showing page ' + (idx + 1) + '. Others: ' + hits.filter(i => i !== idx).slice(0, 6).map(i => i + 1).join(', ') + '. Type a page number below to change.' });
+      if (others.length) checks.push({ s: 'warn', t: (others.length + 1) + ' pages match this unit', d: 'Showing page ' + (idx + 1) + '. Others: ' + others.slice(0, 6).map(i => i + 1).join(', ') + '. Type a page number below to change.' });
       if (info.source === 'search' && !info.exact) checks.push({ s: 'warn', t: 'Only one of the two areas was found', d: 'Check the carpet and SBA on the preview.' });
       fp.checks = checks;
       fp.page = { bytes: ex.bytes, idx };
