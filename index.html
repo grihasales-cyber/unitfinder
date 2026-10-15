@@ -1994,7 +1994,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const pcs = payPcts(m);
     const pcOf = x => { const i = m.ms.indexOf(x), q = pcs && i >= 0 ? pcs[i] : null; return q ? pctTxt(q.p) + (q.dep ? ' + deposits' : '') : ''; };
     const uptoPct = pcs ? p.upto.reduce((a, x) => a + pcs[m.ms.indexOf(x)].p, 0) : null;
-    const restPc = uptoPct != null ? pctTxt(uptoPct) + ' less booking' : '';
+    /* shown net of the booking: "20% less booking" reads as 14% when the booking is 6% */
+    const restPc = uptoPct != null && uptoPct >= pct ? pctTxt(uptoPct - pct) : '';
     const amt = (v, pc) => fmt(v) + (pc ? '<br><small>' + esc(pc) + '</small>' : '');
     const pcTag = pc => pc ? ' (' + pc + ')' : '';
     /* Totals use the pricelist's own schedule percentages (sale value without deposits), so they read like the
@@ -2007,9 +2008,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const clean = pcs && p.booking <= p.due30;
     const dep = list => hasDep(list) ? ' + deposits' : '';
     const pc30 = clean ? uptoPct + pcSum(dueRows) : 0;
-    const soonPc = clean ? pctTxt(pc30) + dep(dueRows) + ' less booking' : ofTotal(soonAmt);
+    const soonPc = clean && pc30 >= pct ? pctTxt(pc30 - pct) + dep(dueRows) : ofTotal(soonAmt);
     const totalPc = clean ? pctTxt(pc30) + dep(dueRows) : ofTotal(total30);
-    const balPc = clean ? pctTxt(pcSum(laterRows)) + dep(laterRows) : ofTotal(balance);
     const L = 'style="text-align:left"';
     const tr = (a, b, bold) => '<tr><td ' + L + '>' + (bold ? '<b>' + a + '</b>' : a) + '</td><td>' + (bold ? '<b>' + b + '</b>' : b) + '</td></tr>';
     const head = t => '<tr><th colspan="2" ' + L + '>' + t + '</th></tr>';
@@ -2019,15 +2019,15 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     h += '<div style="overflow-x:auto;margin-top:12px"><table><tbody>';
     h += head('1. Today, ' + esc(bkFmt(d0)));
     h += '<tr style="background:#E6F4EC"><td ' + L + '><b style="font-size:16px">Booking amount (' + pct + '% of total)</b></td><td><b style="font-size:16px">' + fmt(p.booking) + '</b></td></tr>';
-    h += tr('Payable now', fmt(nowAmt), true);
     h += head('2. Next payment, by ' + esc(bkFmt(d30)) + ' (30 days)');
-    h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', amt(p.remaining, restPc));
-    overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), amt(r.x.amount, pcOf(r.x))); });
-    soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', amt(r.x.amount, pcOf(r.x))); });
+    /* the lines in section 2 show only their share; the amount is in "Payable in the next 30 days" */
+    const pcOnly = (v, pc) => pc ? '<b>' + esc(pc) + '</b>' : fmt(v);
+    h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', pcOnly(p.remaining, restPc));
+    overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), pcOnly(r.x.amount, pcOf(r.x))); });
+    soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', pcOnly(r.x.amount, pcOf(r.x))); });
     h += tr('Payable in the next 30 days', amt(soonAmt, soonPc), true);
     h += head('3. Total');
     h += tr('Total in 30 days (1 + 2)', amt(total30, totalPc), true);
-    h += tr('Balance after 30 days', amt(balance, balPc));
     h += '</tbody></table></div>';
     /* stage-by-stage check against the annexure */
     h += '<h2 style="margin-top:16px">Stage check against the annexure</h2>';
@@ -2062,7 +2062,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     dl.push( 'NEXT PAYMENT (by ' + bkFmt(d30) + ')', 'Balance of ' + p.upto.map(x => x.short).join(' + ') + pcTag(restPc) + ': Rs. ' + fmt(p.remaining));
     overdue.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + (r.when ? ' (annexure ' + bkFmt(r.when) + ', demanded)' : ' (completed)') + ': Rs. ' + fmt(r.x.amount)));
     soon.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ' (annexure ' + bkFmt(r.when) + '): Rs. ' + fmt(r.x.amount)));
-    dl.push('Payable in the next 30 days' + pcTag(soonPc) + ': Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS' + pcTag(totalPc) + ': Rs. ' + fmt(total30), 'Balance after 30 days' + pcTag(balPc) + ': Rs. ' + fmt(balance), '', 'LATER STAGES (annexure dates are tentative)');
+    dl.push('Payable in the next 30 days' + pcTag(soonPc) + ': Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS' + pcTag(totalPc) + ': Rs. ' + fmt(total30), '', 'LATER STAGES (annexure dates are tentative)');
     rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
     bkText = dl.join('\n');
   }
