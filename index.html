@@ -836,7 +836,7 @@ function evaluate(st) {
     const B = dep;
     const D = A + B;
     const ms = PL.schedule.map(it => ({
-      label: it.label, short: it.short,
+      label: it.label, short: it.short, pct: it.pct * 100, dep: !!it.plusDeposits,
       amount: Math.round(A * it.pct) + (it.plusDeposits ? B : 0)
     }));
     const sum = ms.reduce((a, x) => a + x.amount, 0);
@@ -1933,6 +1933,22 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     cand.forEach(c => { if (mi[c.i] == null && mj[c.j] == null) { mi[c.i] = c.j; mj[c.j] = c.i; } });
     return mi;
   }
+  /* Each payment's share of the sale value (A), as in the pricelist's payment schedule. Neopolis carries the
+     schedule's own percentages; other projects get amount / A from the cost sheet, accepted only when they add
+     up to 100% (the final payment may also carry the deposits). */
+  function payPcts(m) {
+    const ms = m.ms || [], A = m.A;
+    if (!ms.length) return null;
+    if (ms.every(x => x.pct != null)) return ms.map(x => ({ p: x.pct, dep: x.dep }));
+    if (!(A > 0)) return null;
+    const raw = ms.map(x => (x.exact != null ? x.exact : x.amount) * 100 / A);
+    const sum = raw.reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - 100) <= 0.05) return raw.map(p => ({ p }));
+    const B = (m.D || 0) - A, bp = B * 100 / A, fi = ms.findIndex(x => /final payment/i.test(x.label));
+    if (fi >= 0 && B > 0 && Math.abs(sum - bp - 100) <= 0.05) return raw.map((p, i) => i === fi ? { p: p - bp, dep: true } : { p });
+    return null;
+  }
+  const pctTxt = p => String(Math.round(p * 100) / 100) + '%';
   function renderEmi() {
     const m = current && current.model;
     $('#emiEmpty').classList.toggle('hide', !!m);
@@ -1969,6 +1985,12 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const soonAmt = p.remaining + overdue.reduce((a, r) => a + r.x.amount, 0) + soon.reduce((a, r) => a + r.x.amount, 0);
     const total30 = nowAmt + soonAmt, balance = m.D - total30;
     const R = x => '₹ ' + fmt(x);
+    const pcs = payPcts(m);
+    const pcOf = x => { const i = m.ms.indexOf(x), q = pcs && i >= 0 ? pcs[i] : null; return q ? pctTxt(q.p) + (q.dep ? ' + deposits' : '') : ''; };
+    const uptoPct = pcs ? p.upto.reduce((a, x) => a + pcs[m.ms.indexOf(x)].p, 0) : null;
+    const restPc = uptoPct != null ? pctTxt(uptoPct) + ' less booking' : '';
+    const amt = (v, pc) => fmt(v) + (pc ? '<br><small>' + esc(pc) + '</small>' : '');
+    const pcTag = pc => pc ? ' (' + pc + ')' : '';
     const L = 'style="text-align:left"';
     const tr = (a, b, bold) => '<tr><td ' + L + '>' + (bold ? '<b>' + a + '</b>' : a) + '</td><td>' + (bold ? '<b>' + b + '</b>' : b) + '</td></tr>';
     const head = t => '<tr><th colspan="2" ' + L + '>' + t + '</th></tr>';
@@ -1980,9 +2002,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     h += '<tr style="background:#E6F4EC"><td ' + L + '><b style="font-size:16px">Booking amount (' + pct + '% of total)</b></td><td><b style="font-size:16px">' + fmt(p.booking) + '</b></td></tr>';
     h += tr('Payable now', fmt(nowAmt), true);
     h += head('2. Next payment, by ' + esc(bkFmt(d30)) + ' (30 days)');
-    h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', fmt(p.remaining));
-    overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), fmt(r.x.amount)); });
-    soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', fmt(r.x.amount)); });
+    h += tr('Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + ' after booking', amt(p.remaining, restPc));
+    overdue.forEach(r => { h += tr(esc(r.x.short) + (r.when ? ' <small>(annexure ' + esc(bkFmt(r.when)) + ', demanded)</small>' : ' <small>(completed)</small>'), amt(r.x.amount, pcOf(r.x))); });
+    soon.forEach(r => { h += tr(esc(r.x.short) + ' <small>(annexure ' + esc(bkFmt(r.when)) + ')</small>', amt(r.x.amount, pcOf(r.x))); });
     h += tr('Payable in the next 30 days', fmt(soonAmt), true);
     h += head('3. Total');
     h += tr('Total in 30 days (1 + 2)', fmt(total30), true);
@@ -1995,8 +2017,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     else if (pay.state === 'fail') h += '<p class="note">The annexure was found but its dates could not be read as text. Booking and the 30-day balance above are from the pricelist.</p>';
     else if (pay.file) h += '<p class="note">Annexure: ' + esc(String(pay.file.name || '').replace(/\.pdf$/i, '')) + '. ' + (pay.stages ? pay.stages.length : 0) + ' stages read.</p>';
     h += '<div style="overflow-x:auto"><table><tbody>';
-    h += tr('<b>Booking, ' + esc(bkFmt(d0)) + '</b><br><small>Due now</small>', '<b>' + fmt(p.booking) + '</b>');
-    h += tr('<b>Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + '</b><br><small>Due by ' + esc(bkFmt(d30)) + '</small>', '<b>' + fmt(p.remaining) + '</b>');
+    h += tr('<b>Booking, ' + esc(bkFmt(d0)) + '</b><br><small>Due now</small>', '<b>' + fmt(p.booking) + '</b><br><small>' + pct + '% of total</small>');
+    h += tr('<b>Rest of ' + esc(p.upto.map(x => x.short).join(' + ')) + '</b><br><small>Due by ' + esc(bkFmt(d30)) + '</small>', '<b>' + fmt(p.remaining) + '</b>' + (restPc ? '<br><small>' + esc(restPc) + '</small>' : ''));
     rows.forEach(r => {
       let sub = '';
       if (r.status === 'past') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ' (' + esc(bkFmt(r.when)) + '). Date has passed.<br><label style="display:flex;gap:8px;align-items:center;margin:6px 0 0;font-size:14px;color:inherit"><input type="checkbox" data-tick="' + esc(r.x.short) + '"' + (r.ticked ? ' checked' : '') + ' style="width:22px;height:22px;margin:0"> Already demanded, add to the next 30 days</label>';
@@ -2005,10 +2027,11 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       else if (r.status === 'later') sub = 'Annexure ' + esc(bkFmt(r.when).replace(/^\d+\s/, '')) + ', after 30 days.';
       else if (r.status === 'demand') sub = 'On demand. The annexure gives no fixed date.';
       else sub = pay.stages ? 'Not found in the annexure. On demand.' : 'Date not available.';
-      h += tr('<b>' + esc(r.x.short) + '</b><br><small>' + sub + '</small>', fmt(r.x.amount));
+      h += tr('<b>' + esc(r.x.short) + '</b><br><small>' + sub + '</small>', amt(r.x.amount, pcOf(r.x)));
     });
     h += tr('Total value', fmt(m.D), true);
     h += '</tbody></table></div>';
+    if (pcs) h += '<p class="note">Stage percentages are of the sale value excluding deposits, as in the pricelist\'s payment schedule' + (pcs.some(q => q.dep) ? '; the final payment also carries the deposits' : '') + '. The booking percentage is of the total value.</p>';
     if (pay.stages && pay.stages.length) h += '<details style="margin-top:10px"><summary>What the app read from the annexure</summary><div style="overflow-x:auto"><table><tbody>' +
       pay.stages.map(st => '<tr><td style="text-align:left">' + esc(st.name) + '</td><td>' + (st.done ? 'Completed' : st.y != null ? esc(MONS[st.m].replace(/^./, c => c.toUpperCase()) + ' ' + st.y) : 'On demand') + '</td></tr>').join('') + '</tbody></table></div></details>';
     if (p.note) h += '<p class="note">' + esc(p.note) + '</p>';
@@ -2017,11 +2040,11 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     const dl = [nm, 'Total value (excl. registration & stamp duty): Rs. ' + fmt(m.D), '',
       'BOOK TODAY (' + bkFmt(d0) + ')', 'Booking amount (' + pct + '%): Rs. ' + fmt(p.booking)];
     dl.push('')
-    dl.push( 'NEXT PAYMENT (by ' + bkFmt(d30) + ')', 'Balance of ' + p.upto.map(x => x.short).join(' + ') + ': Rs. ' + fmt(p.remaining));
-    overdue.forEach(r => dl.push(r.x.short + (r.when ? ' (annexure ' + bkFmt(r.when) + ', demanded)' : ' (completed)') + ': Rs. ' + fmt(r.x.amount)));
-    soon.forEach(r => dl.push(r.x.short + ' (annexure ' + bkFmt(r.when) + '): Rs. ' + fmt(r.x.amount)));
+    dl.push( 'NEXT PAYMENT (by ' + bkFmt(d30) + ')', 'Balance of ' + p.upto.map(x => x.short).join(' + ') + pcTag(restPc) + ': Rs. ' + fmt(p.remaining));
+    overdue.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + (r.when ? ' (annexure ' + bkFmt(r.when) + ', demanded)' : ' (completed)') + ': Rs. ' + fmt(r.x.amount)));
+    soon.forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ' (annexure ' + bkFmt(r.when) + '): Rs. ' + fmt(r.x.amount)));
     dl.push('Payable in the next 30 days: Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS: Rs. ' + fmt(total30), 'Balance after 30 days: Rs. ' + fmt(balance), '', 'LATER STAGES (annexure dates are tentative)');
-    rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
+    rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
     bkText = dl.join('\n');
   }
   async function payLoad(key) {
