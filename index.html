@@ -1900,7 +1900,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (/^note/i.test(line)) { prev = ''; return; }
       const mm = line.match(MONRE);
       if (mm) {
-        let name = line.replace(MONRE, '').replace(/^[\d.\s)\-–:|]+/, '').replace(/[\s\-–:|]+$/, '').trim();
+        let name = line.replace(MONRE, '').replace(/^[\d.\s)\-–:|]+/, '').replace(/\d*(\.\d+)?\s*%/g, '').replace(/[\s\-–:|,]+$/, '').trim();
+        /* a long stage name can wrap: "On Completion of Internal Skim Coat ... Common Area," / "Shafts, Ducts etc., 8% May-27" */
+        if (name && prev && /^(on|upon|payable|completion)\b/i.test(prev) && !/^(on|upon|payable|completion)\b/i.test(name)) name = prev + ' ' + name;
         if (!name) name = prev;
         if (name) out.push({ name, y: 2000 + (+mm[2] % 100 === +mm[2] ? +mm[2] : +mm[2] - 2000), m: MONS.indexOf(mm[1].toLowerCase()) });
         prev = '';
@@ -2744,7 +2746,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   fp.texts = {}; fp.pick = '';
   const projWord = p => new RegExp(p.name.replace(/\s+/g, '[\\s_\\-]*'), 'i');
   function rankFiles(list, wing, key, annex) {
-    const reW = wing != null ? new RegExp('wing[\\s_\\-]*0*' + wing + '(?!\\d)', 'i') : null;
+    /* "Wing 4", "Wing_04", "W4" (Magnus annexures), "Tower 4", "Block 4" */
+    const reW = wing != null ? new RegExp('(^|[^a-z])(wing|w|tower|block)[\\s_\\-.]*0*' + wing + '(?!\\d)', 'i') : null;
     const reN = wing != null ? new RegExp('(^|[^\\d])0*' + wing + '(?!\\d)') : null;
     const tail = genTail(key || '');
     return list.map(f => {
