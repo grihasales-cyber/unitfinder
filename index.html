@@ -1850,6 +1850,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     }
     current = ev;
     noteSearch();
+    if (ev.model) fpPrefetch();
 
     const hasFail = ev.checks.some(c => c.s === 'fail');
     const hasWarn = ev.checks.some(c => c.s === 'warn');
@@ -2140,6 +2141,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+  function lsJson(k) { try { return JSON.parse(lsGet(k) || 'null'); } catch (e) { return null; } }
   const idb = {
     db: null,
     open() { return new Promise((res, rej) => { try { const r = indexedDB.open('unitfinder', 1); r.onupgradeneeded = () => r.result.createObjectStore('presenters'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); },
@@ -2255,13 +2257,17 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (j.err === 'noaccess') throw new Error('No access for ' + j.email + '. Ask your admin to add this email.');
       throw new Error(j.err || 'Sign-in failed');
     }
-    team.email = j.email; team.role = j.role; team.presets = j.presets || {};
+    applyMe(j.email, j.role);
     lsSet('teamEmail', j.email);
-    const adm = j.role === 'admin';
+    lsSet('teamMe', JSON.stringify({ email: j.email, role: j.role }));
+    logEv('signin');
+  }
+  function applyMe(email, role) {
+    team.email = email; team.role = role; team.presets = {};
+    const adm = role === 'admin';
     $('#tabAdm').classList.toggle('hide', !adm);
     document.querySelector('.tabs').style.setProperty('--tabn', adm ? 5 : 4);
     document.querySelector('.tabs').style.setProperty('--tabf', adm ? '13px' : '14px');
-    logEv('signin');
   }
   $('#clientId').value = lsGet('clientId') || '312567417829-q5522gmvlqn15li1chttraipths7mjom.apps.googleusercontent.com';
   $('#originText').textContent = location.origin && location.origin !== 'null' ? location.origin : '(open this app from a web address, not from Downloads)';
@@ -2342,7 +2348,12 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     await Promise.all(jobs);
     return out;
   }
-  async function getDriveFile(id, meta, onProg) {
+  const inflight = {};
+  function getDriveFile(id, meta, onProg) {
+    if (!inflight[id]) inflight[id] = getDriveFile1(id, meta, onProg).finally(() => { delete inflight[id]; });
+    return inflight[id];
+  }
+  async function getDriveFile1(id, meta, onProg) {
     const key = 'file:' + id;
     const cached = await idb.get(key);
     if (drive.token && Date.now() <= drive.exp) {
@@ -2377,16 +2388,30 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (cur && cur !== '__all') sel.value = cur;
   }
   async function listRevisions() {
+    const saved = lsJson('revs:neo');
+    if (saved && saved.files && Date.now() - saved.t < 864e5) {
+      drive.files = saved.files; fillRevisions(false);
+      fetchRevisions().then(list => {
+        if (JSON.stringify(list) === JSON.stringify(drive.files) || !PROJ.legacy) return;
+        drive.files = list; fillRevisions();
+      }).catch(() => {});
+      return;
+    }
+    drive.files = await fetchRevisions();
+    fillRevisions(false);
+    if (!drive.files.length) plStatus('No pricelist files were found in the Drive folder.', true);
+  }
+  async function fetchRevisions() {
     const q = "'" + DRIVE.pricelistFolder + "' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'";
     let tok = '', all = [];
     do {
       const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
       all = all.concat((j && j.files) || []); tok = (j && j.nextPageToken) || '';
     } while (tok);
-    drive.files = all.filter(f => /pricelist/i.test(f.name) && (/\.xlsx$/i.test(f.name) || f.mimeType === 'application/vnd.google-apps.spreadsheet'))
+    const list = all.filter(f => /pricelist/i.test(f.name) && (/\.xlsx$/i.test(f.name) || f.mimeType === 'application/vnd.google-apps.spreadsheet'))
       .sort((a, b) => (revNumber(b.name) || 0) - (revNumber(a.name) || 0) || String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
-    fillRevisions(false);
-    if (!drive.files.length) plStatus('No pricelist files were found in the Drive folder.', true);
+    lsSet('revs:neo', JSON.stringify({ t: Date.now(), files: list }));
+    return list;
   }
 
   /* After a Google token is in hand: check access (team mode) and load this project's revisions. */
@@ -2424,6 +2449,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     pl = null; plStatus('');
     if (id) {
       const f = drive.files.find(x => x.id === id);
+      if (!f) { e.target.value = ''; return; }
       plStatus('Reading ' + f.name + '...');
       try {
         const file = await getDriveFile(id, f);
@@ -2706,8 +2732,20 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     return all;
   }
   /* Looks through a project's Drive folder (up to four levels) and sorts the files. */
-  async function discover(p) {
-    if (projCache[p.id]) return projCache[p.id];
+  /* The file list of a project is kept on the phone for a day and shown at once; when it is more than
+     two minutes old it is refreshed in the background. The team server lists the whole folder in one
+     request ("tree"); an older server without it is walked folder by folder. */
+  let treeOk = true;
+  async function fetchTree(p) {
+    if (team.on && treeOk) {
+      /* any trouble here falls back to the folder-by-folder walk; a server that does not know "tree" yet
+         (it answers "Unknown action", or "Admins only" to a team member) is not asked again */
+      let j = null;
+      try { j = await teamCall('tree', { root: p.root }); } catch (e) { if (/sign|access/i.test(String(e.message))) throw e; }
+      if (j && j.ok && Array.isArray(j.files)) return j.files;
+      if (!j || !j.ok) treeOk = !/Unknown action|Admins only/.test((j && j.err) || '');
+      else treeOk = false;
+    }
     const files = [];
     async function walk(id, folder, depth) {
       const kids = await driveList(id);
@@ -2719,6 +2757,26 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       await Promise.all(subs.map(sf => walk(sf.id, folder ? folder + ' / ' + sf.name : sf.name, depth + 1)));
     }
     await walk(p.root, '', 0);
+    return files;
+  }
+  async function discover(p) {
+    if (projCache[p.id]) return projCache[p.id];
+    const saved = lsJson('disc:' + p.id);
+    if (saved && saved.files && Date.now() - saved.t < 864e5) {
+      projCache[p.id] = sortFiles(saved.files);
+      if (Date.now() - saved.t > 12e4) fetchTree(p).then(files => {
+        lsSet('disc:' + p.id, JSON.stringify({ t: Date.now(), files }));
+        if (JSON.stringify(files) === JSON.stringify(saved.files)) return;
+        projCache[p.id] = sortFiles(files);
+        if (PROJ === p && !p.legacy) { drive.files = projCache[p.id].pricelists.slice(); fillRevisions(); }
+      }).catch(() => {});
+      return projCache[p.id];
+    }
+    const files = await fetchTree(p);
+    lsSet('disc:' + p.id, JSON.stringify({ t: Date.now(), files }));
+    return (projCache[p.id] = sortFiles(files));
+  }
+  function sortFiles(files) {
     const isX = f => /\.xls[xm]?$/i.test(f.name) || f.mimeType === 'application/vnd.ms-excel' || f.mimeType === 'application/vnd.ms-excel.sheet.macroenabled.12' || f.mimeType === 'application/vnd.google-apps.spreadsheet' || f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const isPdf = f => f.mimeType === 'application/pdf' || /\.pdf$/i.test(f.name);
     const lock = f => /^~\$/.test(f.name) || /draft/i.test(f.name);
@@ -2727,7 +2785,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     pricelists.sort((a, b) => (revNumber(b.name) || 0) - (revNumber(a.name) || 0) || String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
     const annex = files.filter(f => isPdf(f) && !/^~\$/.test(f.name) && (/annex/i.test(f.name) || /annex/i.test(f.folder)));
     const plans = files.filter(f => isPdf(f) && !/^~\$/.test(f.name) && annex.indexOf(f) < 0);
-    return (projCache[p.id] = { pricelists, annex, plans });
+    return { pricelists, annex, plans };
   }
   async function listGenericRevisions() {
     plStatus('Looking through the ' + PROJ.name + ' folder in Drive...');
@@ -2809,17 +2867,51 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   }
   async function fpTexts(cacheKey, bytes, my) {
     if (fp.texts[cacheKey]) return fp.texts[cacheKey];
+    const kept = await idb.get('texts:' + cacheKey);
+    if (Array.isArray(kept)) return (fp.texts[cacheKey] = kept);
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
     const out = [];
     for (let i = 1; i <= doc.numPages; i++) {
-      if (my !== fp.token) return null;
+      if (my != null && my !== fp.token) return null;
       const pg = await doc.getPage(i);
       const tc = await pg.getTextContent();
       out.push(tc.items.map(x => x.str).join(' '));
-      if (i % 6 === 0) $('#fpPaper').innerHTML = '<div class="busy">Searching page ' + i + ' of ' + doc.numPages + ' for this unit\'s areas...</div>';
+      if (my != null && i % 6 === 0) $('#fpPaper').innerHTML = '<div class="busy">Searching page ' + i + ' of ' + doc.numPages + ' for this unit\'s areas...</div>';
     }
     fp.texts[cacheKey] = out;
+    idb.put('texts:' + cacheKey, out);
     return out;
+  }
+  function fpRowFor(u) {
+    if (PROJ.legacy) { const r = pl && pl.parsed && pl.parsed.units[u]; return r ? { key: u, plan: r.plan, carpet: r.carpet, sba: r.sba } : null; }
+    const keys = pl && pl.gen ? genResolve(pl.gen.master, u) : [];
+    return keys.length === 1 ? pl.gen.master.units[keys[0]] : null;
+  }
+  /* the file picked without asking: the best by name, clearly ahead of the next */
+  function fpAutoPick(ranked) {
+    return ranked.length && (ranked[0].sc >= 4 || ranked.length === 1) && (ranked.length === 1 || ranked[0].sc > ranked[1].sc) ? ranked[0].f : null;
+  }
+  /* Once a unit is on screen, its presenter is fetched and read in the background (kept on the phone),
+     so the Floor plan tab opens without waiting. */
+  var pfTimer = 0;
+  var pfDone = {};
+  function fpPrefetch() {
+    clearTimeout(pfTimer);
+    pfTimer = setTimeout(async () => {
+      try {
+        if (!drive.token || Date.now() > drive.exp || activeTab === 'fp' || fp.override) return;
+        const u = String(state.unit || '').trim(), row = fpRowFor(u);
+        if (!row || !isFinite(row.carpet)) return;
+        const d = decodeUnit(u);
+        const f = fpAutoPick(rankFiles((await discover(PROJ)).plans, d ? d.wing : null, row.key));
+        if (!f || Number(f.size) > 60 * 1048576) return;
+        const key = f.id + ':' + f.modifiedTime;
+        if (pfDone[key]) return;
+        pfDone[key] = 1;
+        const rec = await getDriveFile(f.id, f);
+        await fpTexts(key, rec.bytes, null);
+      } catch (e) { /* the tab tries again and reports any problem */ }
+    }, 1500);
   }
   async function fpRefreshGeneric(my) {
     const paper = $('#fpPaper');
@@ -2831,9 +2923,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     };
     $('#fpChoose').textContent = 'Use a file from this phone'; $('#fpChoose').disabled = false;
     const u = String(state.unit || '').trim();
-    let row = null;
-    if (PROJ.legacy) { const r = pl && pl.parsed && pl.parsed.units[u]; if (r) row = { key: u, plan: r.plan, carpet: r.carpet, sba: r.sba }; }
-    else { const keys = pl && pl.gen ? genResolve(pl.gen.master, u) : []; if (keys.length === 1) row = pl.gen.master.units[keys[0]]; }
+    const row = fpRowFor(u);
     if (!row) {
       $('#fpSaved').textContent = '';
       return fin([{ s: 'fail', t: !u ? 'Enter a unit number' : !pl ? 'Choose a pricelist revision' : 'Unit not found in this revision', d: 'The floor plan page is found from the unit\'s areas in the pricelist.' }], 'The floor plan appears here once the unit is found.');
@@ -2852,7 +2942,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     sel.innerHTML = '<option value="">Choose a file</option>' + ranked.map(r => '<option value="' + esc(r.f.id) + '">' + esc((r.f.folder ? r.f.folder + ' / ' : '') + r.f.name) + '</option>').join('');
     let pickId = fp.pick && ranked.some(r => r.f.id === fp.pick) ? fp.pick : '';
     let auto = false;
-    if (!pickId && ranked.length && (ranked[0].sc >= 4 || ranked.length === 1) && (ranked.length === 1 || ranked[0].sc > ranked[1].sc)) { pickId = ranked[0].f.id; auto = true; }
+    if (!pickId && fpAutoPick(ranked)) { pickId = fpAutoPick(ranked).id; auto = true; }
     sel.value = pickId;
     let src = null;
     if (fp.override && (fp.override.wing === wing || fp.override.wing == null)) {
@@ -3165,7 +3255,10 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       return;
     }
     drive.token = a.t; drive.exp = a.exp;
-    setDrive('Signing in...', '');
+    /* the person who signed in last time is shown at once; the server confirms it in the background */
+    const me = lsJson('teamMe');
+    if (me && me.email && me.email === lsGet('teamEmail')) { applyMe(me.email, me.role); teamUi(true); setDrive('Signed in as ' + me.email, 'Loading...'); }
+    else setDrive('Signing in...', '');
     try { await afterConnect(); }
     catch (e) { teamAfterError(e); }
   }

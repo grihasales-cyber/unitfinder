@@ -60,9 +60,11 @@ function handle(req) {
   switch (req.act) {
     case 'me':
       touch(who.email);
-      return { ok: true, email: who.email, name: who.name, role: user.role, presets: readPresets() };
+      return { ok: true, email: who.email, name: who.name, role: user.role };
     case 'drive':
       return driveCall(String(req.path || ''), String(req.range || ''));
+    case 'tree':
+      return tree(String(req.root || ''));
     case 'log':
       writeLog(who.email, req.ev);
       return { ok: true };
@@ -155,6 +157,48 @@ function driveCall(path, range) {
   }
   return { ok: true, json };
 }
+/* Every file in a project folder, up to four levels deep, in one request: the folders of each level are
+   listed together (fetchAll), instead of the app asking for each folder in turn. */
+function tree(root) {
+  if (ROOTS.indexOf(root) < 0) throw new Error('Not allowed');
+  const cache = CacheService.getScriptCache();
+  const ckey = 'tree:' + root;
+  const hit = cache.get(ckey);
+  if (hit) return { ok: true, files: JSON.parse(hit) };
+  const fields = encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)');
+  const files = [], marks = {};
+  let level = [{ id: root, folder: '' }];
+  for (let depth = 0; depth < 4 && level.length; depth++) {
+    const next = [];
+    let pending = level.map(f => ({ f, tok: '' }));
+    while (pending.length) {
+      const res = UrlFetchApp.fetchAll(pending.map(x => ({
+        url: 'https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent("'" + x.f.id + "' in parents and trashed=false") + '&fields=' + fields + '&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true' + (x.tok ? '&pageToken=' + encodeURIComponent(x.tok) : ''),
+        headers: auth(), muteHttpExceptions: true
+      })));
+      const more = [];
+      res.forEach((r, i) => {
+        const x = pending[i];
+        if (r.getResponseCode() !== 200) throw new Error('Drive error ' + r.getResponseCode() + ': ' + driveMsg(r));
+        const j = JSON.parse(r.getContentText());
+        (j.files || []).forEach(k => {
+          marks['anc:' + k.id] = '1';
+          if (k.mimeType === 'application/vnd.google-apps.folder') { if (depth < 3) next.push({ id: k.id, folder: x.f.folder ? x.f.folder + ' / ' + k.name : k.name }); }
+          else files.push({ id: k.id, name: k.name, mimeType: k.mimeType, modifiedTime: k.modifiedTime, size: k.size, folder: x.f.folder });
+        });
+        if (j.nextPageToken) more.push({ f: x.f, tok: j.nextPageToken });
+      });
+      pending = more;
+    }
+    level = next;
+  }
+  /* everything found is inside the project, so later reads of these files skip the folder check */
+  const keys = Object.keys(marks);
+  for (let i = 0; i < keys.length; i += 500) { const o = {}; keys.slice(i, i + 500).forEach(k => { o[k] = '1'; }); cache.putAll(o, 21600); }
+  const text = JSON.stringify(files);
+  if (text.length < 90000) cache.put(ckey, text, 300);
+  return { ok: true, files };
+}
 function param(qs, name) {
   const parts = qs.split('&');
   for (let i = 0; i < parts.length; i++) {
@@ -242,6 +286,10 @@ function lastSeen(email) {
 function iso(d) { return d instanceof Date ? d.toISOString() : (d ? String(d) : ''); }
 function touch(email) {
   const now = Date.now();
+  /* "Last seen" is written at most once an hour, so signing in does not wait on the sheet */
+  const cache = CacheService.getScriptCache();
+  if (cache.get('seen:' + email)) return;
+  cache.put('seen:' + email, '1', 3600);
   if (supers().indexOf(email) >= 0) { PropertiesService.getScriptProperties().setProperty('seen:' + email, String(now)); return; }
   const sh = sheet('Users');
   const all = rows('Users');
