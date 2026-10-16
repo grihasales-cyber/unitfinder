@@ -2106,8 +2106,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   }
   $('#bkCopy').addEventListener('click', async () => {
     logEv('copy', { detail: 'Payment summary' });
-    try { if (navigator.share) { await navigator.share({ text: bkText }); return; } } catch (e) { return; }
-    try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; setTimeout(() => { $('#bkCopy').textContent = 'Copy summary to send'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
+    try { if (navigator.share) { await navigator.share({ text: bkText }); return; } }
+    catch (e) { if (e && e.name === 'AbortError') return; logEv('copy', { detail: 'Payment summary - share failed (' + ((e && e.name) || 'error') + '), copied' }); }
+    try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; toast('Summary copied. Open WhatsApp, press and hold in the message box, and tap Paste.'); setTimeout(() => { $('#bkCopy').textContent = 'Copy summary to send'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
   });
 
   /* inputs */
@@ -2133,11 +2134,38 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
+  /* A short message at the bottom of the screen. */
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'toast'; t.setAttribute('role', 'status');
+      t.style.cssText = 'position:fixed;left:12px;right:12px;bottom:84px;z-index:50;background:#14202B;color:#fff;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.4;box-shadow:0 4px 16px rgba(0,0,0,.25)';
+      t.addEventListener('click', () => t.remove());
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), 9000);
+  }
+  /* Opens the phone's share menu (WhatsApp etc.). Where the browser cannot share files, or the menu
+     fails, the PDFs are downloaded instead and a message says how to send them. Returns what happened,
+     which goes into the usage log so problems on a team member's phone can be seen. */
+  const inAppBrowser = /; wv\)|FBAN|FBAV|Instagram|Line\//.test(navigator.userAgent || '');
   async function shareFiles(list) {
     const files = list.map(f => new File([f.blob], f.name, { type: 'application/pdf' }));
-    if (navigator.canShare && navigator.canShare({ files })) {
-      try { await navigator.share({ files, title: list[0].name }); } catch (e) { /* cancelled */ }
-    } else { list.forEach(saveBlob); }
+    let canFiles = false;
+    try { canFiles = !!(navigator.canShare && navigator.canShare({ files })); } catch (e) { canFiles = false; }
+    const fallback = why => {
+      list.forEach(saveBlob);
+      toast(why + ' The PDF' + (list.length > 1 ? 's were' : ' was') + ' downloaded instead: in WhatsApp, tap the clip (attach) > Document and pick it from Downloads.' +
+        (inAppBrowser ? ' Sharing works best when the app is opened in Chrome or from the Unit Finder app.' : ''));
+    };
+    if (!canFiles) { fallback(inAppBrowser ? 'This in-app browser cannot share files.' : 'This browser cannot share files directly.'); return 'downloaded (no file sharing' + (inAppBrowser ? ', in-app browser' : '') + ')'; }
+    try { await navigator.share({ files, title: list[0].name }); return 'shared'; }
+    catch (e) {
+      if (e && e.name === 'AbortError') return 'cancelled';
+      fallback('The share menu could not open (' + ((e && e.name) || 'error') + ').');
+      return 'downloaded (' + ((e && e.name) || 'error') + ')';
+    }
   }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
@@ -3299,8 +3327,15 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   Object.keys(PANES).forEach(k => $(PANES[k][0]).addEventListener('click', () => tab(k)));
   const DOCNAME = { sheet: 'Cost sheet', fp: 'Floor plan', ann: 'Annexure' };
   $('#btnDownload').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) { saveBlob(d.build()); logEv('download', { detail: DOCNAME[activeTab] }); } });
-  $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) { shareFiles([d.build()]); logEv('share', { detail: DOCNAME[activeTab] }); } });
-  $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) { shareFiles([DOCS.sheet.build(), DOCS.fp.build()]); logEv('share', { detail: 'Cost sheet + Floor plan' }); } });
+  /* builds and shares in one go (the share menu must open straight from the tap); a build error is shown */
+  function shareNow(builds, what) {
+    let list;
+    try { list = builds.map(b => b()); }
+    catch (e) { toast('The PDF could not be made: ' + String(e && e.message || e)); logEv('share', { detail: what + ' - build failed' }); return; }
+    shareFiles(list).then(r => logEv('share', { detail: what + (r === 'shared' ? '' : ' - ' + r) }));
+  }
+  $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) shareNow([d.build], DOCNAME[activeTab]); });
+  $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) shareNow([DOCS.sheet.build, DOCS.fp.build], 'Cost sheet + Floor plan'); });
 
   $('#project').innerHTML = PROJECTS.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
   $('#project').value = PROJ.id;
