@@ -2901,9 +2901,14 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       let sc = 0;
       if (reW && reW.test(hay)) sc += 4;
       else if (reN && reN.test(f.name)) sc += 1;
-      if (tail.length >= 3 && f.name.indexOf(tail) >= 0) sc += 5;
+      const planLike = /presenter|floor\s*plan|layout|unit\s*plan|\bplans?\b/i.test(hay) || (reW && reW.test(hay));
+      /* the unit number counts only as a number of its own in a plan-like file: Magnus unit 2015 must not
+         pick "RTC 87.2 2015 to 2020.pdf" from the title documents */
+      if (tail.length >= 3 && planLike && new RegExp('(^|[^\\d])' + tail + '(?!\\d)').test(f.name)) sc += 5;
       if (/presenter/i.test(hay)) sc += 2;
       if (/floor\s*plan|layout|unit\s*plan/i.test(hay)) sc += 2;
+      /* land and legal papers never hold floor plans */
+      if (!annex && /title\s*doc|deed|\brtc\b|\bec[\s-]*\d|\bnoc|notification|receipt|\btax\b|khata|katha|sanction|agreement|certificate|memorandum|endorsement|petition|mortgage|affidavit|survey|sy\.?\s*no/i.test(hay)) sc -= 8;
       if (!annex && /brochure|master\s*plan|amenit|rera|payment|price|cost/i.test(hay)) sc -= 3;
       /* a file named for this project wins over one named for another (a Townpark "Wing 2" in the Neopolis folder) */
       if (projWord(PROJ).test(f.name)) sc += 1;
