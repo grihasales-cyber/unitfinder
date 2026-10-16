@@ -2135,7 +2135,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
   /* A short message at the bottom of the screen. */
-  function toast(msg) {
+  function toast(msg, actions) {
     let t = document.getElementById('toast');
     if (!t) {
       t = document.createElement('div'); t.id = 'toast'; t.setAttribute('role', 'status');
@@ -2144,7 +2144,14 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       document.body.appendChild(t);
     }
     t.textContent = msg;
-    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), 9000);
+    (actions || []).forEach(a => {
+      const b = document.createElement('button');
+      b.textContent = a.label; b.className = 'btn';
+      b.style.cssText = 'display:inline-block;width:auto;margin:10px 8px 0 0;padding:8px 14px;font-size:14px;background:#fff;color:#14202B;border-radius:8px';
+      b.addEventListener('click', ev => { ev.stopPropagation(); t.remove(); a.run(); });
+      t.appendChild(document.createElement('br')); t.appendChild(b);
+    });
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.remove(), actions && actions.length ? 20000 : 9000);
   }
   /* Opens the phone's share menu (WhatsApp etc.). Where the browser cannot share files, or the menu
      fails, the PDFs are downloaded instead and a message says how to send them. Returns what happened,
@@ -2163,8 +2170,19 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     try { await navigator.share({ files, title: list[0].name }); return 'shared'; }
     catch (e) {
       if (e && e.name === 'AbortError') return 'cancelled';
-      fallback('The share menu could not open (' + ((e && e.name) || 'error') + ').');
-      return 'downloaded (' + ((e && e.name) || 'error') + ')';
+      const why = (e && e.name) || 'error';
+      /* a second try from a fresh tap often works; if not, the PDFs are downloaded */
+      return new Promise(done => toast('The share menu did not open (' + why + '). Tap Share again, or download the PDF and attach it in WhatsApp.', [
+        { label: 'Share again', run: async () => {
+          try { await navigator.share({ files, title: list[0].name }); done('shared on second try (first: ' + why + ')'); }
+          catch (e2) {
+            if (e2 && e2.name === 'AbortError') return done('cancelled');
+            fallback('The share menu could not open (' + ((e2 && e2.name) || 'error') + ').');
+            done('downloaded (' + why + ', then ' + ((e2 && e2.name) || 'error') + ')');
+          }
+        } },
+        { label: 'Download', run: () => { fallback('Downloaded.'); done('downloaded (' + why + ')'); } }
+      ]));
     }
   }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }

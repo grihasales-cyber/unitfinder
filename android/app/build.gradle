@@ -1,6 +1,7 @@
 plugins { id 'com.android.application' }
 
-/* The app is a Trusted Web Activity: it opens https://grihasales-cyber.github.io/unitfinder/ full screen in Chrome,
+/* The app is a Trusted Web Activity: it opens https://grihasales-cyber.github.io/unitfinder/ full screen in Chrome
+   (ChromeFirstLauncherActivity prefers Chrome over the default browser, e.g. Samsung Internet),
    so every change pushed to the website reaches the team without a new APK. */
 def ks = System.getenv('UF_KEYSTORE')
 

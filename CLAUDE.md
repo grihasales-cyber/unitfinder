@@ -27,7 +27,7 @@ Cost sheet, Floor plan, Annexure, Payments.
 - Sheet "Unit Finder Admin": Users (email, role, active), Log (signin/search/download/share/copy).
 - Admins: SUPER_ADMINS in Code.gs (vrn1994vishnu@gmail.com) + the deploying account, plus anyone given the admin role. Admin tab: access list and usage stats.
 - Team revision presets were removed at his request: everyone sees all revisions. The Presets sheet and presetAdd/presetDel in Code.gs are unused. Sign out link revokes the token and clears state.
-- Android: Trusted Web Activity in android/, built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json is published from the `grihasales-cyber/grihasales-cyber.github.io` repo (site root redirects to /unitfinder/).
+- Android: Trusted Web Activity in android/ (launcher `ChromeFirstLauncherActivity` opens it in Chrome when installed, because Samsung Internet, the default on Samsung phones, refuses file shares with NotAllowedError), built by .github/workflows/android.yml, released as `unitfinder.apk` (tag `app`) when the signing secrets are set. Signing key is NOT in the repo (public repo). assetlinks.json is published from the `grihasales-cyber/grihasales-cyber.github.io` repo (site root redirects to /unitfinder/).
 
 ## Projects and Drive root folder IDs
 Neopolis (legacy path) 18frM9pjqJZJ9Y7G3IaaVMnlfHS_IWhdZ
