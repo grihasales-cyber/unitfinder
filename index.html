@@ -815,7 +815,8 @@ function evaluate(st) {
     }
   }
   if (st.source) checks.push({ s: st.edited ? 'warn' : 'ok', t: st.edited ? 'Values edited by hand' : 'Pricelist row read from Drive', d: st.edited ? 'Changed after reading ' + st.source : st.source });
-  const bv = num(st.bv), ac = num(st.ac), dep = num(st.dep);
+  const exact = k => st.exact && isFinite(st.exact[k]) && String(st[k]).trim() === st.exact.shown[k] ? st.exact[k] : num(st[k]);
+  const bv = exact('bv'), ac = exact('ac'), dep = exact('dep');
   const missing = [];
   if (!(st.plan || '').trim()) missing.push('plan code');
   if (!(st.type || '').trim()) missing.push('type');
@@ -830,10 +831,11 @@ function evaluate(st) {
   if (missing.length) {
     checks.push({ s: 'fail', t: 'Pricelist values incomplete', d: 'Missing: ' + missing.join(', ') + '.' });
   } else if (d) {
-    const V = bv + ac;
-    const gst = Math.round(V * PL.gstRate);
-    const A = V + gst;
-    const B = dep;
+    /* worked out like the pricelist (no rounding on the way), then rounded to whole rupees:
+       for whole-rupee inputs this gives the same figures as before */
+    const Vx = bv + ac, gstx = Vx * PL.gstRate;
+    const V = Math.round(Vx), gst = Math.round(gstx), A = Math.round(Vx + gstx);
+    const B = Math.round(dep);
     const D = A + B;
     const ms = PL.schedule.map(it => ({
       label: it.label, short: it.short, pct: it.pct * 100, dep: !!it.plusDeposits,
@@ -1787,7 +1789,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   function fillFrom(u) {
     Object.keys(ids).forEach(k => { state[k] = ''; $('#' + ids[k]).value = ''; });
     ['printedV', 'printedGst', 'printedA', 'rowWing', 'rowFloor', 'source'].forEach(k => { state[k] = ''; });
-    state.edited = false;
+    state.edited = false; state.exact = null;
     if (!PROJ.legacy) { showBanner(u && !pl ? CONNECT + ' and choose a pricelist revision to load this unit.' : ''); return; }
     const d = decodeUnit(u);
     if (!d) { showBanner(''); return; }
@@ -1805,6 +1807,9 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     put('plan', r.plan); put('type', r.type); put('cls', r.cls);
     put('carpet', fmt2(r.carpet)); put('sba', fmt2(r.sba));
     put('bv', fmt(r.bv)); put('ac', fmt(r.ac)); put('dep', fmt(r.D - r.A)); put('printed', fmt(r.D));
+    /* the boxes show whole rupees; the sums use the pricelist's exact figures (basic value 3,47,26,595.28 etc.),
+       as long as the box still shows the value read from the pricelist */
+    state.exact = { bv: r.bv, ac: r.ac, dep: r.D - r.A, shown: { bv: state.bv, ac: state.ac, dep: state.dep } };
     put('printedV', r.V); put('printedGst', r.gst); put('printedA', r.A);
     state.rowWing = r.wing; state.rowFloor = r.floor;
     state.source = pl.title;
