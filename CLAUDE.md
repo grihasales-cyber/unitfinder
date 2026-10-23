@@ -22,7 +22,7 @@ Cost sheet, Floor plan, Annexure, Payments.
 - All numbers use Indian grouping (1,00,000) everywhere (`fmt`, `fmt2` -> `inGroup`).
 
 ## Send several units ("+ List")
-- "+ List" next to Download/Share adds the unit on screen (any project, any revision) to a list shown above the buttons (chips with ✕, "Send all (N)", "Clear").
+- "+ List" next to Download/Share adds the unit on screen (any project, any revision). It then reads "✓ Added" (tap again to take it out). No toast on add (he asked). Above the buttons is one compact row: green count badge + unit names (tap to open chips with ✕ and "Clear list") and a green "Send all" button.
 - Each unit becomes one PDF `[Project] - [Unit].pdf`: cost sheet page(s), then the floor plan page. The page already shown on the Floor plan tab is used (`fp.page.unit/proj`), otherwise `floorPageFor` finds it like `fpPrefetch` does. Plots / not found = cost sheet only (chip says so).
 - The list is kept in IndexedDB (`sendlist`) and survives closing the app. Send all shares every PDF in one share sheet (logged as `share`, "List of N: ...").
 
