@@ -246,9 +246,17 @@ canvas{display:block;width:100%;height:auto}
   </div>
 </section>
 
-<div id="actions" class="actions">
+<div id="actions" class="actions" style="grid-template-columns:1fr 1fr auto">
+  <div id="listBar" class="hide" style="grid-column:1/-1">
+    <div id="listChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;max-height:84px;overflow-y:auto"></div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
+      <button id="btnSendAll" class="btn">Send all</button>
+      <button id="btnClearList" class="btn alt" style="padding:0 14px">Clear</button>
+    </div>
+  </div>
   <button id="btnDownload" class="btn" disabled>Download PDF</button>
   <button id="btnShare" class="btn alt" disabled>Share</button>
+  <button id="btnAdd" class="btn alt" disabled style="padding:0 12px" title="Add this unit to the list to send several units together">+ List</button>
 </div>
 </div>
 
@@ -3049,7 +3057,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       if (others.length) checks.push({ s: 'warn', t: (others.length + 1) + ' pages match this unit', d: 'Showing page ' + (idx + 1) + '. Others: ' + others.slice(0, 6).map(i => i + 1).join(', ') + '. Type a page number below to change.' });
       if (info.source === 'search' && !info.exact) checks.push({ s: 'warn', t: 'Only one of the two areas was found', d: 'Check the carpet and SBA on the preview.' });
       fp.checks = checks;
-      fp.page = { bytes: ex.bytes, idx };
+      fp.page = { bytes: ex.bytes, idx, unit: u, proj: PROJ.id };
       fp.ready = !checks.some(c => c.s === 'fail');
       await fpPreview(ex.bytes, my);
     } catch (e) {
@@ -3337,6 +3345,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#btnDownload').disabled = !d || !d.ok();
     $('#btnShare').disabled = !d || !d.ok();
     $('#btnBoth').disabled = !(DOCS.sheet.ok() && DOCS.fp.ok());
+    $('#btnAdd').disabled = !DOCS.sheet.ok();
   }
   const PANES = { sheet: ['#tabSheet', '#paneSheet'], fp: ['#tabFp', '#paneFp'], ann: ['#tabAnn', '#paneAnn'], emi: ['#tabEmi', '#paneEmi'], adm: ['#tabAdm', '#paneAdm'] };
   function tab(which) {
@@ -3364,6 +3373,91 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   }
   $('#btnShare').addEventListener('click', () => { const d = DOCS[activeTab]; if (d && d.ok()) shareNow([d.build], DOCNAME[activeTab]); });
   $('#btnBoth').addEventListener('click', () => { if (DOCS.sheet.ok() && DOCS.fp.ok()) shareNow([DOCS.sheet.build, DOCS.fp.build], 'Cost sheet + Floor plan'); });
+
+  /* ---------- several units sent together ----------
+     "+ List" adds the unit on screen (any project or revision). Each unit becomes one PDF: its cost sheet, then
+     its floor plan page. The page already chosen on the Floor plan tab is used; otherwise it is found the way
+     the tab finds it. The list is kept on the phone (IndexedDB) and "Send all" shares every PDF at once. */
+  const sendList = { items: [], loaded: false };
+  const listKey = () => 'sendlist';
+  async function listLoad() {
+    if (sendList.loaded) return; sendList.loaded = true;
+    const kept = await idb.get(listKey());
+    if (Array.isArray(kept)) sendList.items = kept.filter(x => x && x.key && x.bytes).map(x => Object.assign(x, { busy: false }));
+    listDraw();
+  }
+  function listSave() { idb.put(listKey(), sendList.items.filter(x => !x.busy && x.bytes).map(x => ({ key: x.key, label: x.label, name: x.name, bytes: x.bytes, note: x.note }))); }
+  function listDraw() {
+    const bar = $('#listBar'), n = sendList.items.length, busy = sendList.items.some(x => x.busy);
+    bar.classList.toggle('hide', !n);
+    $('#listChips').innerHTML = '<span style="align-self:center;font-weight:600">' + n + ' unit' + (n === 1 ? '' : 's') + ':</span>' + sendList.items.map((x, i) =>
+      '<span style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:16px;padding:4px 4px 4px 10px;font-size:14px;background:#fff">' +
+      esc(x.label) + (x.busy ? ' <small>(adding...)</small>' : x.note ? ' <small>(cost sheet only)</small>' : '') +
+      '<button data-rm="' + i + '" aria-label="Remove ' + esc(x.label) + '" style="border:0;background:none;font-size:16px;line-height:1;padding:2px 6px;cursor:pointer">&#10005;</button></span>').join('');
+    $('#btnSendAll').disabled = !n || busy;
+    $('#btnSendAll').textContent = busy ? 'Preparing...' : 'Send all (' + n + ')';
+  }
+  $('#listChips').addEventListener('click', e => {
+    const b = e.target.closest('[data-rm]'); if (!b) return;
+    const it = sendList.items[+b.dataset.rm]; if (!it || it.busy) return;
+    sendList.items.splice(+b.dataset.rm, 1); listSave(); listDraw();
+  });
+  $('#btnClearList').addEventListener('click', () => { if (sendList.items.some(x => x.busy)) return; sendList.items = []; listSave(); listDraw(); });
+  /* the floor plan page of a unit, found like the Floor plan tab does (null when there is none) */
+  async function floorPageFor(u) {
+    if (fp.ready && fp.page && fp.page.unit === u && fp.page.proj === PROJ.id) return { bytes: fp.page.bytes };
+    const row = fpRowFor(u);
+    if (!row) return { why: 'unit not found for the floor plan' };
+    if (!isFinite(row.carpet)) return { why: 'plots have no floor plan page' };
+    if (!drive.token || Date.now() > drive.exp) return { why: 'not signed in' };
+    const d = decodeUnit(u);
+    const f = fpAutoPick(rankFiles((await discover(PROJ)).plans, d ? d.wing : null, row.key));
+    if (!f) return { why: 'no presenter file is clearly the one for this unit; open the Floor plan tab to choose it' };
+    if (Number(f.size) > 60 * 1048576) return { why: 'presenter file too large' };
+    const rec = await getDriveFile(f.id, f);
+    const texts = await fpTexts(f.id + ':' + f.modifiedTime, rec.bytes, null);
+    const pick = fpPickPage(texts, row, u);
+    if (pick.idx < 0) return { why: 'no page shows this unit\'s areas; open the Floor plan tab to choose it' };
+    return { bytes: (await extractPage(PDFLib, rec.bytes, pick.idx)).bytes };
+  }
+  $('#btnAdd').addEventListener('click', async () => {
+    if (!DOCS.sheet.ok()) return;
+    await listLoad();
+    const u = String(state.unit).trim(), key = PROJ.id + '|' + u;
+    const label = (PROJ.legacy ? PRICELIST.projectName : PROJ.name) + ' ' + u;
+    let sheet;
+    try { sheet = buildSheet(); } catch (e) { toast('The cost sheet could not be made: ' + String(e && e.message || e)); return; }
+    const old = sendList.items.findIndex(x => x.key === key);
+    const item = { key, label, name: unitName() + '.pdf', busy: true, bytes: null, note: '' };
+    if (old >= 0) sendList.items[old] = item; else sendList.items.push(item);
+    listDraw();
+    toast(label + (old >= 0 ? ' updated in the sendList.' : ' added to the sendList.') + ' Add more units, then tap Send all.');
+    try {
+      const sheetBytes = new Uint8Array(await sheet.blob.arrayBuffer());
+      let floor = { why: 'not found' };
+      try { floor = await floorPageFor(u); } catch (e) { floor = { why: String(e && e.message || e) }; }
+      const out = await PDFLib.PDFDocument.create();
+      for (const b of [sheetBytes, floor.bytes].filter(Boolean)) {
+        const src = await PDFLib.PDFDocument.load(b, { ignoreEncryption: true, updateMetadata: false });
+        (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg));
+      }
+      out.setTitle(item.name.replace(/\.pdf$/, ''));
+      item.bytes = await out.save();
+      if (!floor.bytes) { item.note = 'No floor plan: ' + floor.why + '.'; toast(label + ': the floor plan could not be added (' + floor.why + '). Its cost sheet is in the sendList.'); }
+    } catch (e) {
+      sendList.items.splice(sendList.items.indexOf(item), 1);
+      toast(label + ' could not be added: ' + String(e && e.message || e));
+    }
+    item.busy = false;
+    listSave(); listDraw();
+  });
+  $('#btnSendAll').addEventListener('click', () => {
+    const ready = sendList.items.filter(x => !x.busy && x.bytes);
+    if (!ready.length) return;
+    const files = ready.map(x => ({ blob: new Blob([x.bytes], { type: 'application/pdf' }), name: x.name }));
+    shareFiles(files).then(r => logEv('share', { detail: 'List of ' + ready.length + ': ' + ready.map(x => x.label).join(', ') + (r === 'shared' ? '' : ' - ' + r) }));
+  });
+  listLoad();
 
   $('#project').innerHTML = PROJECTS.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
   $('#project').value = PROJ.id;
