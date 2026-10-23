@@ -232,7 +232,8 @@ canvas{display:block;width:100%;height:auto}
         <div><label for="bk_pct">Booking amount, % of total</label><input id="bk_pct" inputmode="decimal" value="6"></div>
       </div>
       <div id="payBody" style="margin-top:14px"></div>
-      <button id="bkCopy" class="btn alt" style="width:100%;margin-top:12px">Copy summary to send</button>
+      <button id="bkPdf" class="btn" style="width:100%;margin-top:12px">Share payment plan (PDF)</button>
+      <button id="bkCopy" class="llink" style="display:block;margin:6px auto 0;color:var(--mut)">Copy as text instead</button>
       <p class="note">Booking replaces the application amount. Stage dates come from this wing's payment annexure and are tentative; payment falls due on demand. A stage dated by month is taken as the last day of that month. Stamp duty and registration are not included.</p>
     </div>
   </div>
@@ -1905,7 +1906,7 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
   function bkFmt(d) { return d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear(); }
   const MONS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
   const MONRE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*[-'’\/,]?\s*(\d{4}|\d{2})\b/i;
-  let bkText = '';
+  let bkText = '', bkData = null;
   const pay = { key: '', lsKey: '', state: 'idle', stages: null, file: null, ticks: {}, token: 0 };
 
   /* Read the stage names and tentative dates out of the annexure PDF text. */
@@ -2102,6 +2103,76 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     dl.push('Payable in the next 30 days' + pcTag(soonPc) + ': Rs. ' + fmt(soonAmt), '', 'TOTAL IN 30 DAYS' + pcTag(totalPc) + ': Rs. ' + fmt(total30), '', 'LATER STAGES (annexure dates are tentative)');
     rows.filter(r => !r.due).forEach(r => dl.push(r.x.short + pcTag(pcOf(r.x)) + ': ' + (r.when ? 'Annexure ' + bkFmt(r.when).replace(/^\d+\s/, '') : 'on demand') + ' - Rs. ' + fmt(r.x.amount)));
     bkText = dl.join('\n');
+    /* the same plan for the client PDF: timing, what, share, amount */
+    const allDep = pcs && pcs.some(q => q.dep);
+    bkData = {
+      project: PROJ.legacy ? PRICELIST.projectName : PROJ.name, unit: m.key || String(state.unit).trim(), type: m.type || '',
+      sba: num(m.sba || state.sba), date: bkFmt(d0), pct, booking: p.booking, total: m.D,
+      soon: [{ when: 'Today', what: 'Booking amount', pc: pct + '%', amt: p.booking, hi: true },
+        { when: 'By ' + bkFmt(d30), what: 'Balance of ' + p.upto.map(x => x.short).join(' + '), pc: restPc, amt: p.remaining }]
+        .concat(dueRows.map(r => ({ when: 'By ' + bkFmt(d30), what: r.x.short, pc: pcOf(r.x), amt: r.x.amount }))).filter(x => x.amt > 0),
+      total30, totalPc: clean ? totalPc : (m.D > 0 ? pctTxt(total30 * 100 / m.D) : ''),
+      later: laterRows.map(r => ({ when: r.when && r.status !== 'past' ? bkFmt(r.when).replace(/^\d+\s/, '') : 'On demand', what: r.x.short, pc: pcOf(r.x), amt: r.x.amount })),
+      totalPcAll: pcs ? '100%' + (allDep ? ' + deposits' : '') : '', dep: allDep, onA: !!(pcs && m.A > 0)
+    };
+  }
+  /* A one-page payment plan for the client: the booking amount up front, then what is due and when. */
+  function buildPayPdf() {
+    const b = bkData; if (!b) throw new Error('The payment plan is not ready yet.');
+    const doc = newDoc(), W = 595.28, H = 841.89, X = 44, R = W - 44;
+    const INK = [23, 35, 46], MUT = [96, 110, 120], GRN = [11, 61, 46], LINE = [214, 221, 226], SOFT = [240, 245, 243];
+    const rs = v => '\u20B9 ' + fmt(v);
+    const T = (t, x, y, o) => { o = o || {}; doc.setFont(o.f || 'DVSans', o.b ? 'bold' : 'normal'); doc.setFontSize(o.s || 10); doc.setTextColor.apply(doc, o.c || INK); doc.text(String(t), x, y, { align: o.a || 'left' }); };
+    let y = 56;
+    T('SOBHA', X, y, { f: 'DVSerif', s: 11, c: MUT });
+    T('Payment plan', R, y, { s: 10, c: MUT, a: 'right' });
+    y += 30; T(b.project, X, y, { f: 'DVSerif', s: 26 });
+    y += 22; T(['Unit ' + b.unit, b.type, b.sba > 0 ? fmt(b.sba) + ' sq ft (SBA)' : ''].filter(Boolean).join('   \u00B7   '), X, y, { s: 12, c: MUT });
+    T(b.date, R, y, { s: 10, c: MUT, a: 'right' });
+    /* the booking amount, highlighted */
+    y += 22; doc.setFillColor.apply(doc, GRN); doc.roundedRect(X, y, R - X, 104, 8, 8, 'F');
+    T('Book your home today with just', W / 2, y + 30, { s: 12, c: [205, 225, 216], a: 'center' });
+    T(rs(b.booking), W / 2, y + 66, { s: 32, b: 1, c: [255, 255, 255], a: 'center' });
+    T(b.pct + '% of the total value', W / 2, y + 88, { s: 11, c: [205, 225, 216], a: 'center' });
+    y += 120;
+    /* two key figures */
+    const half = (R - X - 12) / 2;
+    [[X, 'Total value', rs(b.total), 'Excludes stamp duty and registration'], [X + half + 12, 'In the first 30 days', rs(b.total30), (b.totalPc ? b.totalPc + ' of the plan, booking included' : 'Booking included')]].forEach(([x, k, v, n]) => {
+      doc.setFillColor.apply(doc, SOFT); doc.roundedRect(x, y, half, 62, 6, 6, 'F');
+      T(k, x + 14, y + 19, { s: 9.5, c: MUT }); T(v, x + 14, y + 40, { s: 16, b: 1 }); T(n, x + 14, y + 54, { s: 8, c: MUT });
+    });
+    y += 84;
+    /* the schedule */
+    const cW = X, cP = X + 112, cS = R - 104, cA = R, wP = cS - cP - 84;
+    const section = t => { T(t, X, y, { s: 11, b: 1, c: GRN }); y += 8; doc.setDrawColor.apply(doc, GRN); doc.setLineWidth(1); doc.line(X, y, R, y); y += 16; };
+    const row = (r, bold) => {
+      doc.setFont('DVSans', bold ? 'bold' : 'normal'); doc.setFontSize(10);
+      const lines = doc.splitTextToSize(r.what, wP), h = Math.max(1, lines.length) * 13 + 9;
+      if (y + h > H - 90) { doc.addPage(); y = 56; }
+      if (r.hi) { doc.setFillColor(232, 243, 237); doc.rect(X - 6, y - 12, R - X + 12, h, 'F'); }
+      T(r.when, cW, y, { s: 9.5, c: bold ? INK : MUT, b: bold });
+      lines.forEach((l, i) => T(l, cP, y + i * 13, { s: 10, b: bold || r.hi }));
+      if (r.pc) T(r.pc, cS, y, { s: 9.5, c: MUT, a: 'right' });
+      T(fmt(r.amt), cA, y, { s: 10, b: bold || r.hi, a: 'right' });
+      y += h; doc.setDrawColor.apply(doc, LINE); doc.setLineWidth(0.5); doc.line(X, y - 12, R, y - 12);
+    };
+    T('When', cW, y, { s: 8.5, c: MUT }); T('Payment', cP, y, { s: 8.5, c: MUT }); T('Share', cS, y, { s: 8.5, c: MUT, a: 'right' }); T('Amount (\u20B9)', cA, y, { s: 8.5, c: MUT, a: 'right' });
+    y += 20;
+    section('First 30 days');
+    b.soon.forEach(r => row(r));
+    row({ when: '', what: 'Total in the first 30 days', pc: b.totalPc, amt: b.total30 }, true);
+    y += 10;
+    if (b.later.length) { section('During construction'); b.later.forEach(r => row(r)); }
+    y += 4; row({ when: '', what: 'Total value', pc: b.totalPcAll, amt: b.total }, true);
+    /* notes */
+    const notes = ['Dates for construction stages are tentative. Each payment falls due when the builder raises the demand.',
+      b.onA ? 'Shares follow the pricelist\'s payment schedule (sale value without deposits).' + (b.dep ? ' Deposits are collected with the final payment.' : '') : '',
+      'Stamp duty and registration charges are extra. The booking amount replaces the application amount.'].filter(Boolean);
+    doc.setFont('DVSans', 'normal'); doc.setFontSize(8);
+    let ny = Math.max(y + 10, H - 44 - notes.length * 11);
+    if (ny + notes.length * 11 > H - 30) { doc.addPage(); ny = 56; }
+    notes.forEach(n => { doc.splitTextToSize(n, R - X).forEach(l => { T(l, X, ny, { s: 8, c: MUT }); ny += 11; }); });
+    return { blob: doc.output('blob'), name: unitName() + ' - Payment Plan.pdf' };
   }
   async function payLoad(key) {
     const my = ++pay.token;
@@ -2133,11 +2204,15 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     if (remaining < 0) { remaining = 0; note = 'The booking amount is more than the pricelist asks for in the first 30 days, so nothing more falls due then.'; }
     return { booking, due30, remaining, upto, rest, note };
   }
+  $('#bkPdf').addEventListener('click', () => {
+    let f; try { f = buildPayPdf(); } catch (e) { toast('The payment plan could not be made: ' + String(e && e.message || e)); return; }
+    shareFiles([f]).then(r => logEv('share', { detail: 'Payment plan' + (r === 'shared' ? '' : ' - ' + r) }));
+  });
   $('#bkCopy').addEventListener('click', async () => {
     logEv('copy', { detail: 'Payment summary' });
     try { if (navigator.share) { await navigator.share({ text: bkText }); return; } }
     catch (e) { if (e && e.name === 'AbortError') return; logEv('copy', { detail: 'Payment summary - share failed (' + ((e && e.name) || 'error') + '), copied' }); }
-    try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; toast('Summary copied. Open WhatsApp, press and hold in the message box, and tap Paste.'); setTimeout(() => { $('#bkCopy').textContent = 'Copy summary to send'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
+    try { await navigator.clipboard.writeText(bkText); $('#bkCopy').textContent = 'Copied'; toast('Summary copied. Open WhatsApp, press and hold in the message box, and tap Paste.'); setTimeout(() => { $('#bkCopy').textContent = 'Copy as text instead'; }, 1800); } catch (e) { window.prompt('Copy this summary', bkText); }
   });
 
   /* inputs */
