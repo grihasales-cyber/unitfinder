@@ -957,7 +957,7 @@ function layoutSheet(m, measure, rowH, noteLH) {
   const ptitle = m.generic ? m.title : PRICELIST.project;
   let tsz = 24; while (tsz > 12 && measure(ptitle, 'serif', tsz) > W - 30) tsz -= 1;
   P.push({ k: 'text', x: X0 + W / 2, y: y + 46, s: ptitle, font: 'serif', size: tsz, align: 'center', color: '#000000' });
-  P.push({ k: 'text', x: X0 + W / 2, y: y + 59, s: m.generic ? m.subtitle : PRICELIST.subtitle, font: 'sans', size: 7.8, align: 'center', color: '#000000' });
+  P.push({ k: 'text', x: X0 + W / 2, y: y + 59, s: unitSubtitle(m.generic ? m.subtitle : PRICELIST.subtitle, m.d), font: 'sans', size: 7.8, align: 'center', color: '#000000' });
   y += mastH;
   const bodyTop = y;
   P.push({ k: 'line', x1: X0, y1: y, x2: X0 + W, y2: y, w: 0.5, color: RULE });
@@ -1561,6 +1561,19 @@ function genCompute(XLSX, book, tplName, key) {
     if (nx && nx.t === 'header' && out.length) out.push({ t: 'spacer' });
   });
   return { sheet: tplName, rows: out, notes, subtitle, D, A, total, ms };
+}
+
+/* The pricelist's heading lists every wing it covers ("Wing 5, 6, 7, 8, 9, 12 ... 19 - Pricing & Payment Schedule");
+   the client's cost sheet names only the unit's own wing. Left as it is when the wing is not in that list. */
+function unitSubtitle(sub, d) {
+  sub = String(sub || '');
+  const m = sub.match(/^\s*(wings?|towers?|blocks?)\s+([\dA-Za-z\s,&\-]+?)\s+-\s+(.*)$/i);
+  if (!m || !d || d.wing == null) return sub;
+  const list = m[2].split(/\s*(?:,|&|\band\b)\s*/i).filter(Boolean);
+  const w = String(d.wing).toUpperCase();
+  const has = list.some(x => { const r = x.match(/^(\d+)\s*-\s*(\d+)$/); return r ? +w >= +r[1] && +w <= +r[2] : x.trim().toUpperCase() === w; });
+  if (!has) return sub;
+  return m[1].replace(/s$/i, '') + ' ' + d.wing + ' - ' + m[3];
 }
 
 function applySchedule(sc) {
