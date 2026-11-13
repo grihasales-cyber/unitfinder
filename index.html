@@ -2772,16 +2772,18 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
     $('#annWing').textContent = w == null ? '-' : w;
   }
   let annEval = { checks: [], canExport: false };
-  const annDrive = { files: null, file: null, bytes: null, token: 0 };
-  async function annList() {
-    if (annDrive.files) return annDrive.files;
+  const annDrive = { files: null, at: 0, file: null, bytes: null, token: 0 };
+  /* the folder list is kept for 2 minutes; a wing that is missing from it is looked up again (fresh) at once,
+     so a PDF added while the app is open shows up */
+  async function annList(fresh) {
+    if (annDrive.files && !fresh && Date.now() - annDrive.at < 120e3) return annDrive.files;
     const q = "'" + DRIVE.annexureFolder + "' in parents and trashed=false and mimeType='application/pdf'";
     let tok = '', all = [];
     do {
       const j = await dApi('files?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,size)') + '&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''));
       all = all.concat((j && j.files) || []); tok = (j && j.nextPageToken) || '';
     } while (tok);
-    annDrive.files = all;
+    annDrive.files = all; annDrive.at = Date.now();
     return all;
   }
   function annSet(checks, bytes, file) {
@@ -2802,7 +2804,8 @@ if (typeof module !== 'undefined') module.exports = { normText, fixRupee, fmt2, 
       const files = await annList();
       if (my !== annDrive.token) return;
       const re = new RegExp('Wing\\s*' + w + '\\s*-', 'i');
-      const hits = files.filter(f => re.test(f.name));
+      let hits = files.filter(f => re.test(f.name));
+      if (!hits.length && Date.now() - annDrive.at > 3e3) { hits = (await annList(true)).filter(f => re.test(f.name)); if (my !== annDrive.token) return; }
       if (!hits.length) { paper.innerHTML = ''; annSet([{ s: 'ok', t: 'Unit number decoded', d: 'Wing ' + w }, { s: 'fail', t: 'No annexure for wing ' + w + ' in Drive', d: 'The folder has no PDF named for wing ' + w + '. Add it to the "Neopolis Payment Annexure" folder.' }]); return; }
       hits.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
       const f = hits[0];
